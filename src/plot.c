@@ -37,27 +37,10 @@ static inline short plot_color_for(unsigned k) {
   return (short)(k + 1);
 }
 
-// Non-linear vertical scale with three regions, all sharing one normalized
-// curve norm(p) in [0,1] (row = rows - norm*rows; 0%->bottom, 100%->top):
-//   p <= 25 : norm = 0.18 * (p/25)^1.5           (gentle: 0-25% gets ~18% height)
-//   25 < p < 75 : norm = 0.18 + 0.32*smoothstep((p-25)/50)  (compressed bridge)
-//   p >= 75 : norm = 0.5 + 0.5*((p-75)/25)^2.4   (75%->midline, 100%->top: the
-//              [75,100] band therefore occupies exactly half the height)
-// This gives the low end real room (was ~3.6% under a single power curve) while
-// keeping the top half and the magnified mid-band you asked for.
+// Linear 0-100% vertical scale: norm(p) = p/100, so 0%->bottom, 100%->top with
+// even spacing (each 25% band occupies an equal quarter of the height).
 static inline double plot_norm(double data) {
-  double p = data;
-  if (p <= 25.0) {
-    double t = p / 25.0;
-    return 0.18 * pow(t, 1.5);
-  } else if (p < 75.0) {
-    double t = (p - 25.0) / 50.0;
-    double s = t * t * (3.0 - 2.0 * t);  // smoothstep
-    return 0.18 + (0.5 - 0.18) * s;
-  } else {
-    double t = (p - 75.0) / 25.0;
-    return 0.5 + 0.5 * pow(t, 2.4);
-  }
+  return data / 100.0;
 }
 
 static inline int data_level(double rows, double data) {
@@ -66,7 +49,7 @@ static inline int data_level(double rows, double data) {
 }
 
 // Row (within the plot window) at which a given percentage should be labelled,
-// using the same non-linear scale as data_level so labels track the trace.
+// using the same linear scale as data_level so labels track the trace.
 int plot_label_row(double rows, double percent) {
   return 1 + data_level(rows, percent);
 }
