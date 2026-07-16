@@ -48,12 +48,6 @@ static inline int data_level(double rows, double data) {
   return (int)round(rows - norm * rows);
 }
 
-// Row (within the plot window) at which a given percentage should be labelled,
-// using the same linear scale as data_level so labels track the trace.
-int plot_label_row(double rows, double percent) {
-  return 1 + data_level(rows, percent);
-}
-
 void nvtop_line_plot(WINDOW *win, size_t num_data, const double *data, unsigned num_lines, bool legend_left,
                      char legend[MAX_LINES_PER_PLOT][PLOT_MAX_LEGEND_SIZE]) {
   if (num_data == 0)

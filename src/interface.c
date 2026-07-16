@@ -236,11 +236,7 @@ static void initialize_gpu_mem_plot(struct plot_window *plot, struct window_posi
   rows -= 2;
   plot->plot_window = newwin(rows, cols, position->posY + 1, position->posX + 4);
   draw_rectangle(plot->win, 3, 0, cols + 2, rows + 2);
-  mvwprintw(plot->win, plot_label_row(rows, 25), 0, " 25");
-  mvwprintw(plot->win, plot_label_row(rows, 75), 0, " 75");
-  mvwprintw(plot->win, plot_label_row(rows, 50), 0, " 50");
-  mvwprintw(plot->win, plot_label_row(rows, 100), 0, "100");
-  mvwprintw(plot->win, plot_label_row(rows, 0), 0, "  0");
+  // No numeric axis labels (kept the graph clean per user request).
   plot->data = calloc(cols, sizeof(*plot->data));
   plot->num_data = cols;
 
@@ -1761,43 +1757,8 @@ static unsigned populate_plot_data_from_ring_buffer(const struct nvtop_interface
     unsigned data_ring_index = 0;
     for (enum plot_information info = plot_gpu_rate; info < plot_information_count; ++info) {
       if (plot_isset_draw_info(info, to_draw)) {
-        // Populate the legend
-        switch (info) {
-        case plot_gpu_rate:
-          // No legend text for the main GPU % trace (keeps the graph clean).
-          plot_legend[in_processing][0] = '\0';
-          break;
-        case plot_gpu_mem_rate:
-          // No legend text for the GPU mem % trace.
-          plot_legend[in_processing][0] = '\0';
-          break;
-        case plot_encoder_rate:
-          snprintf(plot_legend[in_processing], PLOT_MAX_LEGEND_SIZE, "GPU%u encode%%", dev_id);
-          break;
-        case plot_decoder_rate:
-          snprintf(plot_legend[in_processing], PLOT_MAX_LEGEND_SIZE, "GPU%u decode%%", dev_id);
-          break;
-        case plot_gpu_temperature:
-          snprintf(plot_legend[in_processing], PLOT_MAX_LEGEND_SIZE, "GPU%u temp(c)", dev_id);
-          break;
-        case plot_gpu_power_draw_rate:
-          snprintf(plot_legend[in_processing], PLOT_MAX_LEGEND_SIZE, "GPU%u power%%", dev_id);
-          break;
-        case plot_fan_speed:
-          snprintf(plot_legend[in_processing], PLOT_MAX_LEGEND_SIZE, "GPU%u fan%%", dev_id);
-          break;
-        case plot_gpu_clock_rate:
-          snprintf(plot_legend[in_processing], PLOT_MAX_LEGEND_SIZE, "GPU%u clock%%", dev_id);
-          break;
-        case plot_gpu_mem_clock_rate:
-          snprintf(plot_legend[in_processing], PLOT_MAX_LEGEND_SIZE, "GPU%u mem clock%%", dev_id);
-          break;
-        case plot_effective_load_rate:
-          snprintf(plot_legend[in_processing], PLOT_MAX_LEGEND_SIZE, "GPU%u eff. load%%", dev_id);
-          break;
-        case plot_information_count:
-          break;
-        }
+        // No legend text for any trace (keeps the graph clean per user request).
+        plot_legend[in_processing][0] = '\0';
         // Copy the data
         unsigned data_in_ring = interface_ring_buffer_data_stored(&interface->saved_data_ring, dev_id, data_ring_index);
         if (interface->options.plot_left_to_right) {
