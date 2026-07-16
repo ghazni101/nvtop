@@ -68,14 +68,15 @@ void nvtop_line_plot(WINDOW *win, size_t num_data, const double *data, unsigned 
   for (size_t k = 0; k < num_lines; ++k)
     lvl_before[k] = data_level(rows, data[k]);
 
-  // Faint dotted horizontal grid lines at 25/50/75%, drawn BEFORE the trace so
-  // the graph lines paint over them (grid stays in the background). Dedicated
-  // color pair + A_DIM + sparse bullets keep it very faint and non-disturbing.
-  for (unsigned p = 25; p <= 75; p += 25) {
-    int gy = data_level(rows, p);
+  // Faint dotted horizontal grid lines at 50/75% (25% omitted), drawn BEFORE the
+  // trace so the graph lines paint over them (grid stays in the background).
+  // Row uses 1 + data_level to align exactly with the axis labels drawn in
+  // initialize_gpu_mem_plot (which call plot_label_row = 1 + data_level).
+  for (unsigned p = 50; p <= 75; p += 25) {
+    int gy = 1 + data_level(rows, p);
     if (gy > 0 && gy < rows) {
       wcolor_set(win, grid_color, NULL);
-      for (int c = 2; c < cols; c += 4)
+      for (int c = 2; c < cols; c += 2)
         mvwaddch(win, gy, c, ACS_BULLET | A_DIM);
     }
   }
