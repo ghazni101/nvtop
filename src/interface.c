@@ -131,11 +131,12 @@ static void alloc_device_window(unsigned int start_row, unsigned int start_col, 
     size_encode += 1;
   size_encode /= 2;
 
-  dwin->gpu_util_enc_dec = newwin(1, size_gpu, start_row + 2, start_col);
-  if (dwin->gpu_util_enc_dec == NULL)
-    goto alloc_error;
-  dwin->mem_util_enc_dec = newwin(1, size_mem, start_row + 2, start_col + spacer + size_gpu);
+  // MEM bar on the left, GPU bar on the right (swapped from upstream)
+  dwin->mem_util_enc_dec = newwin(1, size_mem, start_row + 2, start_col);
   if (dwin->mem_util_enc_dec == NULL)
+    goto alloc_error;
+  dwin->gpu_util_enc_dec = newwin(1, size_gpu, start_row + 2, start_col + spacer + size_mem);
+  if (dwin->gpu_util_enc_dec == NULL)
     goto alloc_error;
   dwin->encode_util = newwin(1, size_encode, start_row + 2, start_col + spacer * 2 + size_gpu + size_mem);
   if (dwin->encode_util == NULL)
@@ -147,19 +148,19 @@ static void alloc_device_window(unsigned int start_row, unsigned int start_col, 
   if (dwin->encdec_util == NULL)
     goto alloc_error;
   // For auto-hide encode / decode window
-  dwin->gpu_util_no_enc_or_dec = newwin(1, size_gpu + size_encode / 2 + 1, start_row + 2, start_col);
-  if (dwin->gpu_util_no_enc_or_dec == NULL)
-    goto alloc_error;
   dwin->mem_util_no_enc_or_dec =
-      newwin(1, size_mem + size_encode / 2, start_row + 2, start_col + spacer + size_gpu + size_encode / 2 + 1);
+      newwin(1, size_mem + size_encode / 2, start_row + 2, start_col);
   if (dwin->mem_util_no_enc_or_dec == NULL)
     goto alloc_error;
-  dwin->gpu_util_no_enc_and_dec = newwin(1, size_gpu + size_encode + 1, start_row + 2, start_col);
-  if (dwin->gpu_util_no_enc_and_dec == NULL)
+  dwin->gpu_util_no_enc_or_dec = newwin(1, size_gpu + size_encode / 2 + 1, start_row + 2, start_col + spacer + size_mem + size_encode / 2 + 1);
+  if (dwin->gpu_util_no_enc_or_dec == NULL)
     goto alloc_error;
   dwin->mem_util_no_enc_and_dec =
-      newwin(1, size_mem + size_encode + 1, start_row + 2, start_col + spacer + size_gpu + size_encode + 1);
+      newwin(1, size_mem + size_encode + 1, start_row + 2, start_col);
   if (dwin->mem_util_no_enc_and_dec == NULL)
+    goto alloc_error;
+  dwin->gpu_util_no_enc_and_dec = newwin(1, size_gpu + size_encode + 1, start_row + 2, start_col + spacer + size_mem + size_encode + 1);
+  if (dwin->gpu_util_no_enc_and_dec == NULL)
     goto alloc_error;
   dwin->enc_was_visible = false;
   dwin->dec_was_visible = false;
@@ -235,11 +236,11 @@ static void initialize_gpu_mem_plot(struct plot_window *plot, struct window_posi
   rows -= 2;
   plot->plot_window = newwin(rows, cols, position->posY + 1, position->posX + 4);
   draw_rectangle(plot->win, 3, 0, cols + 2, rows + 2);
-  mvwprintw(plot->win, 1 + rows * 3 / 4, 0, " 25");
-  mvwprintw(plot->win, 1 + rows / 4, 0, " 75");
-  mvwprintw(plot->win, 1 + rows / 2, 0, " 50");
-  mvwprintw(plot->win, 1, 0, "100");
-  mvwprintw(plot->win, rows, 0, "  0");
+  mvwprintw(plot->win, plot_label_row(rows, 25), 0, " 25");
+  mvwprintw(plot->win, plot_label_row(rows, 75), 0, " 75");
+  mvwprintw(plot->win, plot_label_row(rows, 50), 0, " 50");
+  mvwprintw(plot->win, plot_label_row(rows, 100), 0, "100");
+  mvwprintw(plot->win, plot_label_row(rows, 0), 0, "  0");
   plot->data = calloc(cols, sizeof(*plot->data));
   plot->num_data = cols;
 
@@ -418,6 +419,10 @@ static void initialize_colors(void) {
   init_pair(yellow_color, COLOR_YELLOW, background_color);
   init_pair(blue_color, COLOR_BLUE, background_color);
   init_pair(magenta_color, COLOR_MAGENTA, background_color);
+  init_pair(grid_color, COLOR_WHITE, background_color);
+  // GPU graph/bar = maroon (closest standard color: red), VRAM graph/bar = blue.
+  init_pair(gpu_color, COLOR_RED, background_color);
+  init_pair(mem_color, COLOR_BLUE, background_color);
 }
 
 struct nvtop_interface *initialize_curses(unsigned total_devices, unsigned devices_count, unsigned largest_device_name,
@@ -468,12 +473,12 @@ void clean_ncurses(struct nvtop_interface *interface) {
 }
 
 static void draw_percentage_meter(WINDOW *win, const char *prelude, unsigned int new_percentage,
-                                  const char inside_braces_right[1024]) {
+                                  const char inside_braces_right[1024], short color_pair) {
   int rows, cols;
   getmaxyx(win, rows, cols);
   (void)rows;
   size_t size_prelude = strlen(prelude);
-  wcolor_set(win, cyan_color, NULL);
+  wcolor_set(win, color_pair, NULL);
   mvwprintw(win, 0, 0, "%s", prelude);
   wstandend(win);
   waddch(win, '[');
@@ -489,15 +494,15 @@ static void draw_percentage_meter(WINDOW *win, const char *prelude, unsigned int
   unsigned int right_side_braces_space_required = strlen(inside_braces_right);
   wmove(win, cury, curx + between_sbraces - right_side_braces_space_required);
   wprintw(win, "%s", inside_braces_right);
-  mvwchgat(win, cury, curx, represent_usage, 0, green_color, NULL);
+  mvwchgat(win, cury, curx, represent_usage, 0, color_pair, NULL);
   wnoutrefresh(win);
 }
 
 // Draw percentage with a yellow highlight percentage (yellow percentage <= new_percentage)
 static void draw_percentage_meter_with_yellow_highlight(WINDOW *win, const char *prelude, unsigned int new_percentage,
-                                                        unsigned int yellow_percentage,
-                                                        const char inside_braces_right[1024]) {
-  draw_percentage_meter(win, prelude, new_percentage, inside_braces_right);
+                                                       unsigned int yellow_percentage,
+                                                       const char inside_braces_right[1024], short color_pair) {
+  draw_percentage_meter(win, prelude, new_percentage, inside_braces_right, color_pair);
   if (yellow_percentage > new_percentage)
     yellow_percentage = new_percentage;
   int rows, cols;
@@ -690,30 +695,30 @@ static void draw_devices(struct list_head *devices, struct nvtop_interface *inte
       unsigned rate =
           GPUINFO_DYNAMIC_FIELD_VALID(&device->dynamic_info, encoder_rate) ? device->dynamic_info.encoder_rate : 0;
       snprintf(buff, 1024, "%u%%", rate);
-      draw_percentage_meter(encode_win, "ENC", rate, buff);
+      draw_percentage_meter(encode_win, "ENC", rate, buff, green_color);
     }
     if (display_decode) {
       unsigned rate =
           GPUINFO_DYNAMIC_FIELD_VALID(&device->dynamic_info, decoder_rate) ? device->dynamic_info.decoder_rate : 0;
       snprintf(buff, 1024, "%u%%", rate);
       if (device->static_info.encode_decode_shared)
-        draw_percentage_meter(decode_win, "ENC/DEC", rate, buff);
+        draw_percentage_meter(decode_win, "ENC/DEC", rate, buff, green_color);
       else
-        draw_percentage_meter(decode_win, "DEC", rate, buff);
+        draw_percentage_meter(decode_win, "DEC", rate, buff, green_color);
     }
     if (GPUINFO_DYNAMIC_FIELD_VALID(&device->dynamic_info, gpu_util_rate)) {
       if (GPUINFO_DYNAMIC_FIELD_VALID(&device->dynamic_info, effective_load_rate)) {
         snprintf(buff, 1024, "%u%%(eff %u%%)", device->dynamic_info.gpu_util_rate,
                  device->dynamic_info.effective_load_rate);
         draw_percentage_meter_with_yellow_highlight(gpu_util_win, "GPU", device->dynamic_info.gpu_util_rate,
-                                                    device->dynamic_info.effective_load_rate, buff);
+                                                    device->dynamic_info.effective_load_rate, buff, gpu_color);
       } else {
         snprintf(buff, 1024, "%u%%", device->dynamic_info.gpu_util_rate);
-        draw_percentage_meter(gpu_util_win, "GPU", device->dynamic_info.gpu_util_rate, buff);
+        draw_percentage_meter(gpu_util_win, "GPU", device->dynamic_info.gpu_util_rate, buff, gpu_color);
       }
     } else {
       snprintf(buff, 1024, "N/A");
-      draw_percentage_meter(gpu_util_win, "GPU", 0, buff);
+      draw_percentage_meter(gpu_util_win, "GPU", 0, buff, gpu_color);
     }
 
     if (GPUINFO_DYNAMIC_FIELD_VALID(&device->dynamic_info, total_memory) &&
@@ -728,7 +733,7 @@ static void draw_devices(struct list_head *devices, struct nvtop_interface *inte
       }
       snprintf(buff, 1024, "%.3f%s/%.3f%s", used_prefixed, memory_prefix[prefix_off], total_prefixed,
                memory_prefix[prefix_off]);
-      draw_percentage_meter(mem_util_win, "MEM", (unsigned int)(100. * used_mem / total_mem), buff);
+      draw_percentage_meter(mem_util_win, "MEM", (unsigned int)(100. * used_mem / total_mem), buff, mem_color);
     } else if (GPUINFO_DYNAMIC_FIELD_VALID(&device->dynamic_info, total_memory)) {
       double total_mem = device->dynamic_info.total_memory;
       double total_prefixed = total_mem;
@@ -737,10 +742,10 @@ static void draw_devices(struct list_head *devices, struct nvtop_interface *inte
         total_prefixed /= 1024.;
       }
       snprintf(buff, 1024, "N/A/%.3f%s", total_prefixed, memory_prefix[prefix_off]);
-      draw_percentage_meter(mem_util_win, "MEM", 0, buff);
+      draw_percentage_meter(mem_util_win, "MEM", 0, buff, mem_color);
     } else {
       snprintf(buff, 1024, "N/A");
-      draw_percentage_meter(mem_util_win, "MEM", 0, buff);
+      draw_percentage_meter(mem_util_win, "MEM", 0, buff, mem_color);
     }
     if (GPUINFO_DYNAMIC_FIELD_VALID(&device->dynamic_info, gpu_temp)) {
       if (!GPUINFO_STATIC_FIELD_VALID(&device->static_info, temperature_slowdown_threshold))
@@ -1759,10 +1764,12 @@ static unsigned populate_plot_data_from_ring_buffer(const struct nvtop_interface
         // Populate the legend
         switch (info) {
         case plot_gpu_rate:
-          snprintf(plot_legend[in_processing], PLOT_MAX_LEGEND_SIZE, "GPU%u %%", dev_id);
+          // No legend text for the main GPU % trace (keeps the graph clean).
+          plot_legend[in_processing][0] = '\0';
           break;
         case plot_gpu_mem_rate:
-          snprintf(plot_legend[in_processing], PLOT_MAX_LEGEND_SIZE, "GPU%u mem%%", dev_id);
+          // No legend text for the GPU mem % trace.
+          plot_legend[in_processing][0] = '\0';
           break;
         case plot_encoder_rate:
           snprintf(plot_legend[in_processing], PLOT_MAX_LEGEND_SIZE, "GPU%u encode%%", dev_id);

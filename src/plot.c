@@ -21,6 +21,7 @@
 
 #include "nvtop/plot.h"
 #include "nvtop/common.h"
+#include "nvtop/interface_internal_common.h"
 
 #include <assert.h>
 #include <ncurses.h>
@@ -28,8 +29,30 @@
 #include <string.h>
 #include <tgmath.h>
 
-static inline int data_level(double rows, double data, double increment) {
-  return (int)(rows - round(data / increment));
+// Map a plot metric index to its color pair. GPU rate (0) -> maroon,
+// GPU mem rate (1) -> purple; the rest keep the default 1-based pairs.
+static inline short plot_color_for(unsigned k) {
+  if (k == 0) return gpu_color;
+  if (k == 1) return mem_color;
+  return (short)(k + 1);
+}
+
+// Smooth non-linear vertical scale. Anchored so 0%->bottom, 75%->midline,
+// 100%->top: the [75,100] band therefore occupies exactly half the height,
+// but the curve is visibly compressed at the low end and magnified at the top
+// (unlike a piecewise-linear kink, which only bends at 75%).
+// norm = (data/100)^P with P = ln(0.5)/ln(0.75) so that 0.75^P == 0.5.
+static inline int data_level(double rows, double data) {
+  const double P = 2.40942;
+  double frac = data / 100.0;
+  double norm = pow(frac, P);
+  return (int)round(rows - norm * rows);
+}
+
+// Row (within the plot window) at which a given percentage should be labelled,
+// using the same non-linear scale as data_level so labels track the trace.
+int plot_label_row(double rows, double percent) {
+  return 1 + data_level(rows, percent);
 }
 
 void nvtop_line_plot(WINDOW *win, size_t num_data, const double *data, unsigned num_lines, bool legend_left,
@@ -39,17 +62,28 @@ void nvtop_line_plot(WINDOW *win, size_t num_data, const double *data, unsigned 
   int rows, cols;
   getmaxyx(win, rows, cols);
   rows -= 1;
-  double increment = 100. / (double)(rows);
 
   assert(num_lines <= MAX_LINES_PER_PLOT && "Cannot plot more than " EXPAND_AND_QUOTE(MAX_LINES_PER_PLOT) " lines");
   unsigned lvl_before[MAX_LINES_PER_PLOT];
   for (size_t k = 0; k < num_lines; ++k)
-    lvl_before[k] = data_level(rows, data[k], increment);
+    lvl_before[k] = data_level(rows, data[k]);
+
+  // Faint dotted horizontal grid lines at 25/50/75%, drawn BEFORE the trace so
+  // the graph lines paint over them (grid stays in the background). Dedicated
+  // color pair + A_DIM + sparse bullets keep it very faint and non-disturbing.
+  for (unsigned p = 25; p <= 75; p += 25) {
+    int gy = data_level(rows, p);
+    if (gy > 0 && gy < rows) {
+      wcolor_set(win, grid_color, NULL);
+      for (int c = 2; c < cols; c += 4)
+        mvwaddch(win, gy, c, ACS_BULLET | A_DIM);
+    }
+  }
 
   for (size_t i = 0; i < num_data || i < (size_t)cols; i += num_lines) {
     for (unsigned k = 0; k < num_lines; ++k) {
-      unsigned lvl_now_k = data_level(rows, data[i + k], increment);
-      wcolor_set(win, k + 1, NULL);
+      unsigned lvl_now_k = data_level(rows, data[i + k]);
+      wcolor_set(win, plot_color_for(k), NULL);
       // Three cases: has increased, has decreased and remained level
       if (lvl_before[k] < lvl_now_k || lvl_before[k] > lvl_now_k) {
         // Case 1 and 2: has increased/decreased
@@ -82,9 +116,9 @@ void nvtop_line_plot(WINDOW *win, size_t num_data, const double *data, unsigned 
             else {
               // The continuation lies outside the update interval so keep the
               // color
-              wcolor_set(win, j + 1, NULL);
+              wcolor_set(win, plot_color_for(j), NULL);
               mvwaddch(win, lvl_before[j], i + k, ACS_HLINE);
-              wcolor_set(win, k + 1, NULL);
+              wcolor_set(win, plot_color_for(k), NULL);
             }
           }
         }
@@ -95,9 +129,9 @@ void nvtop_line_plot(WINDOW *win, size_t num_data, const double *data, unsigned 
           if (j != k) {
             if (lvl_before[j] != lvl_now_k) {
               // Add the continuation of other metric lines
-              wcolor_set(win, j + 1, NULL);
+              wcolor_set(win, plot_color_for(j), NULL);
               mvwaddch(win, lvl_before[j], i + k, ACS_HLINE);
-              wcolor_set(win, k + 1, NULL);
+              wcolor_set(win, plot_color_for(k), NULL);
             }
           }
         }

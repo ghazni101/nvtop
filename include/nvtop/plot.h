@@ -35,4 +35,8 @@ void nvtop_line_plot(WINDOW *win, size_t num_data, const double *data, unsigned 
 
 void draw_rectangle(WINDOW *win, unsigned startX, unsigned startY, unsigned sizeX, unsigned sizeY);
 
+// Row (within the plot window) at which a percentage axis label should be
+// printed; shares the non-linear scale used by the trace.
+int plot_label_row(double rows, double percent);
+
 #endif // __PLOT_H_

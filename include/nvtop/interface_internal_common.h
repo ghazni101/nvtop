@@ -47,6 +47,9 @@ enum interface_color {
   green_color,
   red_color,
   blue_color,
+  grid_color,
+  gpu_color,   // maroon: GPU utilization graph + bar
+  mem_color,   // blue: VRAM utilization graph + bar
 };
 
 struct device_window {
