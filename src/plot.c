@@ -37,15 +37,31 @@ static inline short plot_color_for(unsigned k) {
   return (short)(k + 1);
 }
 
-// Smooth non-linear vertical scale. Anchored so 0%->bottom, 75%->midline,
-// 100%->top: the [75,100] band therefore occupies exactly half the height,
-// but the curve is visibly compressed at the low end and magnified at the top
-// (unlike a piecewise-linear kink, which only bends at 75%).
-// norm = (data/100)^P with P = ln(0.5)/ln(0.75) so that 0.75^P == 0.5.
+// Non-linear vertical scale with three regions, all sharing one normalized
+// curve norm(p) in [0,1] (row = rows - norm*rows; 0%->bottom, 100%->top):
+//   p <= 25 : norm = 0.18 * (p/25)^1.5           (gentle: 0-25% gets ~18% height)
+//   25 < p < 75 : norm = 0.18 + 0.32*smoothstep((p-25)/50)  (compressed bridge)
+//   p >= 75 : norm = 0.5 + 0.5*((p-75)/25)^2.4   (75%->midline, 100%->top: the
+//              [75,100] band therefore occupies exactly half the height)
+// This gives the low end real room (was ~3.6% under a single power curve) while
+// keeping the top half and the magnified mid-band you asked for.
+static inline double plot_norm(double data) {
+  double p = data;
+  if (p <= 25.0) {
+    double t = p / 25.0;
+    return 0.18 * pow(t, 1.5);
+  } else if (p < 75.0) {
+    double t = (p - 25.0) / 50.0;
+    double s = t * t * (3.0 - 2.0 * t);  // smoothstep
+    return 0.18 + (0.5 - 0.18) * s;
+  } else {
+    double t = (p - 75.0) / 25.0;
+    return 0.5 + 0.5 * pow(t, 2.4);
+  }
+}
+
 static inline int data_level(double rows, double data) {
-  const double P = 2.40942;
-  double frac = data / 100.0;
-  double norm = pow(frac, P);
+  double norm = plot_norm(data);
   return (int)round(rows - norm * rows);
 }
 
