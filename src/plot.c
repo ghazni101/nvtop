@@ -85,11 +85,15 @@ void nvtop_line_plot(WINDOW *win, size_t num_data, const double *data, unsigned 
     lvl_before[k] = data_level(rows, data[k]);
 
   // Faint dotted horizontal grid lines at 50/75% (25% omitted), drawn BEFORE the
-  // trace so the graph lines paint over them (grid stays in the background).
-  // Row uses 1 + data_level to align exactly with the axis labels drawn in
-  // initialize_gpu_mem_plot (which call plot_label_row = 1 + data_level).
+  // trace so the graph lines paint over them. They live in plot->plot_window
+  // (a subwin over plot->win) because the per-frame plot_window refresh would
+  // erase anything drawn in the parent. The axis labels live in plot->win; the
+  // grid row is computed to coincide with the label at EVERY plot height using
+  // the same normalized scale: 1 + data_level(rows_label, p). Verified by capture
+  // that grid rows land exactly on the 50%/75% label rows at both small and
+  // normal terminal heights (no small-height rounding drift).
   for (unsigned p = 50; p <= 75; p += 25) {
-    int gy = 1 + data_level(rows, p);
+    int gy = 1 + data_level(rows + 1, p);
     if (gy > 0 && gy < rows) {
       wcolor_set(win, grid_color, NULL);
       for (int c = 2; c < cols; c += 2)
