@@ -230,7 +230,7 @@ static void initialize_gpu_mem_plot(struct plot_window *plot, struct window_posi
   rows -= 2;
   plot->plot_window = newwin(rows, cols, position->posY + 1, position->posX + 4);
   draw_rectangle(plot->win, 3, 0, cols + 2, rows + 2);
-  // Axis and time labels are chrome: keep them dim so the trace stands out.
+  // Axis labels are chrome: keep them dim so the trace stands out.
   if (interface_use_color)
     wcolor_set(plot->win, dim_color, NULL);
   else
@@ -247,82 +247,9 @@ static void initialize_gpu_mem_plot(struct plot_window *plot, struct window_posi
   mvwprintw(plot->win, plot_label_row(rows - 1, 0) + 1, 0, "  0");
   plot->data = calloc(cols, sizeof(*plot->data));
   plot->num_data = cols;
+  (void)options;
 
-  unsigned column_divisor = 0;
-  for (unsigned i = 0; i < plot->num_devices_to_plot; ++i) {
-    unsigned dev_id = plot->devices_ids[i];
-    plot_info_to_draw to_draw = options->gpu_specific_opts[dev_id].to_draw;
-    column_divisor += plot_count_draw_info(to_draw);
-  }
-  assert(column_divisor > 0);
-  char elapsedSeconds[5];
-  char *err = "err";
-  char *zeroSec = "0s";
-  if (options->plot_left_to_right) {
-    char *toPrint = zeroSec;
-    mvwprintw(plot->win, position->sizeY - 1, 4, "%s", toPrint);
-
-    int retval = snprintf(elapsedSeconds, 5, "%ds", options->update_interval * cols / 4 / column_divisor / 1000);
-    if (retval > 4)
-      toPrint = err;
-    else
-      toPrint = elapsedSeconds;
-    mvwprintw(plot->win, position->sizeY - 1, 4 + cols / 4 - strlen(toPrint) / 2, "%s", toPrint);
-
-    retval = snprintf(elapsedSeconds, 5, "%ds", options->update_interval * cols / 2 / column_divisor / 1000);
-    if (retval > 4)
-      toPrint = err;
-    else
-      toPrint = elapsedSeconds;
-    mvwprintw(plot->win, position->sizeY - 1, 4 + cols / 2 - strlen(toPrint) / 2, "%s", toPrint);
-
-    retval = snprintf(elapsedSeconds, 5, "%ds", options->update_interval * cols * 3 / 4 / column_divisor / 1000);
-    if (retval > 4)
-      toPrint = err;
-    else
-      toPrint = elapsedSeconds;
-    mvwprintw(plot->win, position->sizeY - 1, 4 + cols * 3 / 4 - strlen(toPrint) / 2, "%s", toPrint);
-
-    retval = snprintf(elapsedSeconds, 5, "%ds", options->update_interval * cols / column_divisor / 1000);
-    if (retval > 4)
-      toPrint = err;
-    else
-      toPrint = elapsedSeconds;
-    mvwprintw(plot->win, position->sizeY - 1, 4 + cols - strlen(toPrint), "%s", toPrint);
-  } else {
-    char *toPrint;
-    int retval = snprintf(elapsedSeconds, 5, "%ds", options->update_interval * cols / column_divisor / 1000);
-    if (retval > 4)
-      toPrint = err;
-    else
-      toPrint = elapsedSeconds;
-    mvwprintw(plot->win, position->sizeY - 1, 4, "%s", toPrint);
-
-    retval = snprintf(elapsedSeconds, 5, "%ds", options->update_interval * cols * 3 / 4 / column_divisor / 1000);
-    if (retval > 4)
-      toPrint = err;
-    else
-      toPrint = elapsedSeconds;
-    mvwprintw(plot->win, position->sizeY - 1, 4 + cols / 4 - strlen(toPrint) / 2, "%s", toPrint);
-
-    retval = snprintf(elapsedSeconds, 5, "%ds", options->update_interval * cols / 2 / column_divisor / 1000);
-    if (retval > 4)
-      toPrint = err;
-    else
-      toPrint = elapsedSeconds;
-    mvwprintw(plot->win, position->sizeY - 1, 4 + cols / 2 - strlen(toPrint) / 2, "%s", toPrint);
-
-    retval = snprintf(elapsedSeconds, 5, "%ds", options->update_interval * cols / 4 / column_divisor / 1000);
-    if (retval > 4)
-      toPrint = err;
-    else
-      toPrint = elapsedSeconds;
-    mvwprintw(plot->win, position->sizeY - 1, 4 + cols * 3 / 4 - strlen(toPrint) / 2, "%s", toPrint);
-
-    toPrint = zeroSec;
-    mvwprintw(plot->win, position->sizeY - 1, 4 + cols - strlen(toPrint), "%s", toPrint);
-  }
-  // End of the dimmed axis/time labels
+  // End of the dimmed axis labels
   if (!interface_use_color)
     wattroff(plot->win, A_DIM);
   else
