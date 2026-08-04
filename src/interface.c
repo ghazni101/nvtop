@@ -88,43 +88,33 @@ static void alloc_device_window(unsigned int start_row, unsigned int start_col, 
 
   const unsigned int spacer = 1;
 
-  // Line 1 = Name | PCIe info
-
-  dwin->name_win = newwin(1, sizeof_device_field[device_name], start_row, start_col);
-  if (dwin->name_win == NULL)
-    goto alloc_error;
-  dwin->pcie_info =
-      newwin(1, sizeof_device_field[device_pcie], start_row, start_col + spacer + sizeof_device_field[device_name]);
-  if (dwin->pcie_info == NULL)
-    goto alloc_error;
-
-  // Line 2 = GPU clk | MEM clk | Temp | Fan | Power
-  dwin->gpu_clock_info = newwin(1, sizeof_device_field[device_clock], start_row + 1, start_col);
+  // Line 1 = GPU clk | MEM clk | Temp | Fan | Power
+  dwin->gpu_clock_info = newwin(1, sizeof_device_field[device_clock], start_row, start_col);
   if (dwin->gpu_clock_info == NULL)
     goto alloc_error;
-  dwin->mem_clock_info = newwin(1, sizeof_device_field[device_mem_clock], start_row + 1,
+  dwin->mem_clock_info = newwin(1, sizeof_device_field[device_mem_clock], start_row,
                                 start_col + spacer + sizeof_device_field[device_clock]);
   if (dwin->mem_clock_info == NULL)
     goto alloc_error;
   dwin->temperature =
-      newwin(1, sizeof_device_field[device_temperature], start_row + 1,
+      newwin(1, sizeof_device_field[device_temperature], start_row,
              start_col + spacer * 2 + sizeof_device_field[device_clock] + sizeof_device_field[device_mem_clock]);
   if (dwin->temperature == NULL)
     goto alloc_error;
-  dwin->fan_speed = newwin(1, sizeof_device_field[device_fan_speed], start_row + 1,
+  dwin->fan_speed = newwin(1, sizeof_device_field[device_fan_speed], start_row,
                            start_col + spacer * 3 + sizeof_device_field[device_clock] +
                                sizeof_device_field[device_mem_clock] + sizeof_device_field[device_temperature]);
   if (dwin->fan_speed == NULL)
     goto alloc_error;
   dwin->power_info =
-      newwin(1, sizeof_device_field[device_power], start_row + 1,
+      newwin(1, sizeof_device_field[device_power], start_row,
              start_col + spacer * 4 + sizeof_device_field[device_clock] + sizeof_device_field[device_mem_clock] +
                  sizeof_device_field[device_temperature] + sizeof_device_field[device_fan_speed]);
   if (dwin->power_info == NULL)
     goto alloc_error;
 
-  // Line 3 = GPU used [| Encoder | Decoder]
-  // Line 4 = MEM used
+  // Line 2 = GPU used [| Encoder | Decoder]
+  // Line 3 = MEM used
 
   int size_enc_dec_pair = totalcol / 3;
   if (size_enc_dec_pair % 2 == 1)
@@ -140,44 +130,44 @@ static void alloc_device_window(unsigned int start_row, unsigned int start_col, 
   int size_gpu_with_one = totalcol - spacer - size_decode;
   int size_gpu_alone = totalcol;
 
-  dwin->gpu_util_enc_dec = newwin(1, size_gpu_with_both, start_row + 2, start_col);
+  dwin->gpu_util_enc_dec = newwin(1, size_gpu_with_both, start_row + 1, start_col);
   if (dwin->gpu_util_enc_dec == NULL)
     goto alloc_error;
-  dwin->encode_util = newwin(1, size_encode, start_row + 2, start_col + spacer + size_gpu_with_both);
+  dwin->encode_util = newwin(1, size_encode, start_row + 1, start_col + spacer + size_gpu_with_both);
   if (dwin->encode_util == NULL)
     goto alloc_error;
   dwin->decode_util =
-      newwin(1, size_decode, start_row + 2, start_col + spacer * 2 + size_gpu_with_both + size_encode);
+      newwin(1, size_decode, start_row + 1, start_col + spacer * 2 + size_gpu_with_both + size_encode);
   if (dwin->decode_util == NULL)
     goto alloc_error;
-  dwin->encdec_util = newwin(1, size_encode * 2, start_row + 2, start_col + spacer + size_gpu_with_both);
+  dwin->encdec_util = newwin(1, size_encode * 2, start_row + 1, start_col + spacer + size_gpu_with_both);
   if (dwin->encdec_util == NULL)
     goto alloc_error;
   // For auto-hide encode / decode window
-  dwin->gpu_util_no_enc_or_dec = newwin(1, size_gpu_with_one, start_row + 2, start_col);
+  dwin->gpu_util_no_enc_or_dec = newwin(1, size_gpu_with_one, start_row + 1, start_col);
   if (dwin->gpu_util_no_enc_or_dec == NULL)
     goto alloc_error;
-  dwin->gpu_util_no_enc_and_dec = newwin(1, size_gpu_alone, start_row + 2, start_col);
+  dwin->gpu_util_no_enc_and_dec = newwin(1, size_gpu_alone, start_row + 1, start_col);
   if (dwin->gpu_util_no_enc_and_dec == NULL)
     goto alloc_error;
 
-  dwin->mem_util = newwin(1, totalcol, start_row + 3, start_col);
+  dwin->mem_util = newwin(1, totalcol, start_row + 2, start_col);
   if (dwin->mem_util == NULL)
     goto alloc_error;
 
   dwin->enc_was_visible = false;
   dwin->dec_was_visible = false;
 
-  // Line 5 = Number of shading cores | L2 Features
-  dwin->shader_cores = newwin(1, sizeof_device_field[device_shadercores], start_row + 4, start_col);
+  // Line 4 = Number of shading cores | L2 Features
+  dwin->shader_cores = newwin(1, sizeof_device_field[device_shadercores], start_row + 3, start_col);
   if (dwin->shader_cores == NULL)
     goto alloc_error;
-  dwin->l2_cache_size = newwin(1, sizeof_device_field[device_l2features], start_row + 4,
+  dwin->l2_cache_size = newwin(1, sizeof_device_field[device_l2features], start_row + 3,
                                start_col + spacer + sizeof_device_field[device_shadercores]);
   if (dwin->l2_cache_size == NULL)
     goto alloc_error;
   dwin->exec_engines =
-      newwin(1, sizeof_device_field[device_execengines], start_row + 4,
+      newwin(1, sizeof_device_field[device_execengines], start_row + 3,
              start_col + spacer * 2 + sizeof_device_field[device_shadercores] + sizeof_device_field[device_l2features]);
   if (dwin->exec_engines == NULL)
     goto alloc_error;
@@ -190,7 +180,6 @@ alloc_error:
 }
 
 static void free_device_windows(struct device_window *dwin) {
-  delwin(dwin->name_win);
   delwin(dwin->gpu_util_enc_dec);
   delwin(dwin->gpu_util_no_enc_or_dec);
   delwin(dwin->gpu_util_no_enc_and_dec);
@@ -203,7 +192,6 @@ static void free_device_windows(struct device_window *dwin) {
   delwin(dwin->power_info);
   delwin(dwin->temperature);
   delwin(dwin->fan_speed);
-  delwin(dwin->pcie_info);
   delwin(dwin->shader_cores);
   delwin(dwin->l2_cache_size);
   delwin(dwin->exec_engines);
@@ -379,23 +367,15 @@ static void initialize_all_windows(struct nvtop_interface *dwin) {
   struct window_position plot_positions[MAX_CHARTS];
   struct window_position setup_position;
 
-  // Row 0 = title bar, last row = shortcut bar; everything else in between
-  int layout_rows = rows - 2;
+  // Row 0 = first layout row, last row = shortcut bar; everything else in between
+  int layout_rows = rows - 1;
   if (layout_rows < 1)
     layout_rows = 1;
-  compute_sizes_from_layout(devices_count, dwin->options.has_gpu_info_bar ? 5 : 4, device_length(),
+  compute_sizes_from_layout(devices_count, dwin->options.has_gpu_info_bar ? 4 : 3, device_length(),
                             (unsigned)layout_rows, cols, dwin->options.gpu_specific_opts,
                             dwin->options.process_fields_displayed, device_positions, &dwin->num_plots,
                             plot_positions, map_device_to_plot, &process_position, &setup_position,
                             dwin->options.hide_processes_list);
-
-  // The layout starts at row 0; shift it down below the title bar
-  for (unsigned int i = 0; i < devices_count; ++i)
-    device_positions[i].posY += 1;
-  for (unsigned int i = 0; i < dwin->num_plots; ++i)
-    plot_positions[i].posY += 1;
-  process_position.posY += 1;
-  setup_position.posY += 1;
 
   alloc_plot_window(devices_count, plot_positions, map_device_to_plot, dwin);
 
@@ -407,7 +387,6 @@ static void initialize_all_windows(struct nvtop_interface *dwin) {
   alloc_process_with_option(dwin, process_position.posX, process_position.posY, process_position.sizeX,
                             process_position.sizeY);
 
-  dwin->title_window = newwin(1, cols, 0, 0);
   dwin->shortcut_window = newwin(1, cols, rows - 1, 0);
 
   alloc_setup_window(&setup_position, &dwin->setup_win);
@@ -422,7 +401,6 @@ static void delete_all_windows(struct nvtop_interface *dwin) {
   delwin(dwin->process.process_with_option_win);
   dwin->process.process_win = NULL;
   dwin->process.process_with_option_win = NULL;
-  delwin(dwin->title_window);
   delwin(dwin->shortcut_window);
   delwin(dwin->process.option_window.option_win);
   for (size_t i = 0; i < dwin->num_plots; ++i) {
@@ -456,6 +434,10 @@ static void initialize_colors(const unsigned char plot_color_idx[MAX_LINES_PER_P
   init_pair(magenta_color, COLOR_MAGENTA, background_color);
   init_pair(dim_color, COLOR_WHITE, background_color);
   init_pair(grid_color, COLOR_WHITE, background_color);
+  init_pair(value_on_green_color, COLOR_BLACK, COLOR_GREEN);
+  init_pair(value_on_yellow_color, COLOR_BLACK, COLOR_YELLOW);
+  init_pair(value_on_red_color, COLOR_BLACK, COLOR_RED);
+  init_pair(value_on_empty_color, COLOR_BLACK, COLOR_WHITE);
   static const short gpu_plot_pairs[MAX_LINES_PER_PLOT] = {
       gpu_util_plot_color, gpu_mem_plot_color, gpu_plot_color_3, gpu_plot_color_4};
   for (unsigned s = 0; s < MAX_LINES_PER_PLOT; ++s)
@@ -547,13 +529,53 @@ static short meter_fill_pair(unsigned percentage) {
   return green_color;
 }
 
+// Overlay the meter value right-aligned on top of the bar: black text on a
+// contrasting badge everywhere it is drawn — the fill color where it sits on
+// the colored fill, white where it sits on the empty portion — so the value
+// always reads as an overlay on the bar. yellow_cells marks a leading yellow
+// segment (effective load).
+static void overlay_meter_value(WINDOW *win, int cols, int bar_start, unsigned percentage, int fill_cells,
+                                int yellow_cells, const char *value) {
+  int value_len = (int)strlen(value);
+  if (value_len <= 0)
+    return;
+  int overlay_start = cols - value_len;
+  if (overlay_start < bar_start)
+    overlay_start = bar_start;
+
+  short on_fill_pair = value_on_green_color;
+  short fill_pair = meter_fill_pair(percentage);
+  if (fill_pair == yellow_color)
+    on_fill_pair = value_on_yellow_color;
+  else if (fill_pair == red_color)
+    on_fill_pair = value_on_red_color;
+
+  for (int j = 0; j < value_len; ++j) {
+    int c = overlay_start + j;
+    if (c >= cols)
+      break;
+    int bar_cell = c - bar_start;
+    short pair = 0;
+    if (interface_use_color && bar_cell >= 0) {
+      if (bar_cell < yellow_cells)
+        pair = value_on_yellow_color;
+      else if (bar_cell < fill_cells)
+        pair = on_fill_pair;
+      else
+        pair = value_on_empty_color;
+    }
+    wattr_set(win, A_BOLD, pair, NULL);
+    mvwaddch(win, 0, c, (chtype)(unsigned char)value[j]);
+  }
+  wstandend(win);
+}
+
 static void draw_percentage_meter(WINDOW *win, const char *prelude, unsigned int new_percentage,
                                   const char inside_braces_right[1024]) {
   int rows, cols;
   getmaxyx(win, rows, cols);
   (void)rows;
   size_t size_prelude = strlen(prelude);
-  size_t right_len = strlen(inside_braces_right);
 
   wmove(win, 0, 0);
   wclrtoeol(win);
@@ -566,13 +588,14 @@ static void draw_percentage_meter(WINDOW *win, const char *prelude, unsigned int
   wprintw(win, "%s", prelude);
   if (!interface_use_color)
     wattroff(win, A_DIM);
+  int bar_start = getcurx(win);
+  int bar_cols = cols - bar_start;
+  if (bar_cols < 1)
+    bar_cols = 1;
 
   if (interface_unicode) {
-    // Smooth meter: [bar][value] with eighth-block resolution and light-shade
-    // for the empty portion
-    int bar_cols = cols - (int)size_prelude - 1 - (int)right_len - 1;
-    if (bar_cols < 1)
-      bar_cols = 1;
+    // Smooth meter filling the whole window width; the value text is
+    // overlaid on the right side of the bar (see overlay_meter_value).
     unsigned long long total_eighths =
         (unsigned long long)llround((double)new_percentage / 100. * (double)bar_cols * 8.);
     int full = (int)(total_eighths / 8);
@@ -584,21 +607,25 @@ static void draw_percentage_meter(WINDOW *win, const char *prelude, unsigned int
     for (int i = 0; i < full; ++i)
       waddstr(win, meter_blocks[8]);
     if (full < bar_cols) {
-      waddstr(win, meter_blocks[frac]);
+      int empty_start = full;
+      if (frac > 0) {
+        // Fractional cell only when non-zero: meter_blocks[0] is a space,
+        // which would shift the bar one column right of its label.
+        waddstr(win, meter_blocks[frac]);
+        empty_start = full + 1;
+      }
       if (interface_use_color)
         wcolor_set(win, dim_color, NULL);
       else
         wattron(win, A_DIM);
-      for (int i = full + 1; i < bar_cols; ++i)
+      for (int i = empty_start; i < bar_cols; ++i)
         waddstr(win, "\xe2\x96\x91"); // ░
       if (!interface_use_color)
         wattroff(win, A_DIM);
     }
-    // Value, right-aligned
+    // Value overlaid, right-aligned on the bar
     wstandend(win);
-    wattron(win, A_BOLD);
-    mvwprintw(win, 0, cols - (int)right_len, "%s", inside_braces_right);
-    wattroff(win, A_BOLD);
+    overlay_meter_value(win, cols, bar_start, new_percentage, full, 0, inside_braces_right);
   } else {
     // Classic ASCII meter: [||||     ]
     waddch(win, '[');
@@ -612,7 +639,7 @@ static void draw_percentage_meter(WINDOW *win, const char *prelude, unsigned int
     whline(win, '|', represent_usage);
     mvwhline(win, cury, curx + represent_usage, ' ', between_sbraces - represent_usage);
     mvwaddch(win, cury, curx + between_sbraces, ']');
-    wmove(win, cury, curx + between_sbraces - (int)right_len);
+    wmove(win, cury, curx + between_sbraces - (int)strlen(inside_braces_right));
     wprintw(win, "%s", inside_braces_right);
     mvwchgat(win, cury, curx, represent_usage, 0, green_color, NULL);
   }
@@ -632,7 +659,6 @@ static void draw_percentage_meter_with_yellow_highlight(WINDOW *win, const char 
     getmaxyx(win, rows, cols);
     (void)rows;
     size_t size_prelude = strlen(prelude);
-    size_t right_len = strlen(inside_braces_right);
 
     wmove(win, 0, 0);
     wclrtoeol(win);
@@ -643,10 +669,11 @@ static void draw_percentage_meter_with_yellow_highlight(WINDOW *win, const char 
     wprintw(win, "%s", prelude);
     if (!interface_use_color)
       wattroff(win, A_DIM);
-
-    int bar_cols = cols - (int)size_prelude - 1 - (int)right_len - 1;
+    int bar_start = getcurx(win);
+    int bar_cols = cols - bar_start;
     if (bar_cols < 1)
       bar_cols = 1;
+
     unsigned long long yellow_eighths =
         (unsigned long long)llround((double)yellow_percentage / 100. * (double)bar_cols * 8.);
     unsigned long long total_eighths =
@@ -675,20 +702,24 @@ static void draw_percentage_meter_with_yellow_highlight(WINDOW *win, const char 
     for (int i = pos; i < full; ++i)
       waddstr(win, meter_blocks[8]);
     if (full < bar_cols) {
-      waddstr(win, meter_blocks[frac]);
+      int empty_start = full;
+      if (frac > 0) {
+        // Fractional cell only when non-zero (meter_blocks[0] is a space,
+        // which would shift the bar one column right of its label).
+        waddstr(win, meter_blocks[frac]);
+        empty_start = full + 1;
+      }
       if (interface_use_color)
         wcolor_set(win, dim_color, NULL);
       else
         wattron(win, A_DIM);
-      for (int i = full + 1; i < bar_cols; ++i)
+      for (int i = empty_start; i < bar_cols; ++i)
         waddstr(win, "\xe2\x96\x91"); // ░
       if (!interface_use_color)
         wattroff(win, A_DIM);
     }
     wstandend(win);
-    wattron(win, A_BOLD);
-    mvwprintw(win, 0, cols - (int)right_len, "%s", inside_braces_right);
-    wattroff(win, A_BOLD);
+    overlay_meter_value(win, cols, bar_start, new_percentage, full, yellow_full, inside_braces_right);
     wnoutrefresh(win);
   } else {
     draw_percentage_meter(win, prelude, new_percentage, inside_braces_right);
@@ -741,24 +772,6 @@ static void draw_temp_color(WINDOW *win, unsigned int temp, unsigned int temp_sl
   else
     waddch(win, 'F');
   wnoutrefresh(win);
-}
-
-static void print_pcie_at_scale(WINDOW *win, unsigned int value) {
-  int prefix_off;
-  double val_d = value;
-  for (prefix_off = 1; prefix_off < 5 && val_d >= 1000.; ++prefix_off) {
-    val_d = val_d / 1024.;
-  }
-  if (val_d >= 100.) {
-    wprintw(win, "%.1f", val_d);
-  } else {
-    if (val_d >= 10.) {
-      wprintw(win, "%.2f", val_d);
-    } else {
-      wprintw(win, "%.3f", val_d);
-    }
-  }
-  wprintw(win, " %sB/s", memory_prefix[prefix_off]);
 }
 
 static inline void werase_and_wnoutrefresh(WINDOW *w) {
@@ -842,18 +855,6 @@ static void draw_devices(struct list_head *devices, struct nvtop_interface *inte
   list_for_each_entry(device, devices, list) {
     struct device_window *dev = &interface->devices_win[dev_id];
 
-    wcolor_set(dev->name_win, cyan_color, NULL);
-    wattron(dev->name_win, A_BOLD);
-    mvwprintw(dev->name_win, 0, 0, "Device %-2u", dev_id);
-    wattroff(dev->name_win, A_BOLD);
-    wstandend(dev->name_win);
-    if (GPUINFO_STATIC_FIELD_VALID(&device->static_info, device_name)) {
-      wprintw(dev->name_win, "[%s]", device->static_info.device_name);
-      wnoutrefresh(dev->name_win);
-    } else {
-      wprintw(dev->name_win, "[N/A]");
-      wnoutrefresh(dev->name_win);
-    }
     bool display_encode = false;
     bool display_decode = false;
     encode_decode_show_select(dev, GPUINFO_DYNAMIC_FIELD_VALID(&device->dynamic_info, encoder_rate),
@@ -1009,61 +1010,6 @@ static void draw_devices(struct list_head *devices, struct nvtop_interface *inte
       mvwprintw(dev->power_info, 0, 0, "POW N/A W");
     mvwchgat(dev->power_info, 0, 0, 3, A_DIM, interface_use_color ? dim_color : 0, NULL);
     wnoutrefresh(dev->power_info);
-
-    // PICe throughput
-    werase(dev->pcie_info);
-    short dim_pair = interface_use_color ? dim_color : 0;
-    if (device->static_info.integrated_graphics) {
-      wcolor_set(dev->pcie_info, dim_pair, NULL);
-      if (!interface_use_color)
-        wattron(dev->pcie_info, A_DIM);
-      mvwprintw(dev->pcie_info, 0, 0, "Integrated GPU");
-      if (!interface_use_color)
-        wattroff(dev->pcie_info, A_DIM);
-      wstandend(dev->pcie_info);
-    } else {
-      if (interface_use_color)
-        wcolor_set(dev->pcie_info, dim_pair, NULL);
-      else
-        wattron(dev->pcie_info, A_DIM);
-      mvwprintw(dev->pcie_info, 0, 0, "PCIe ");
-      wprintw(dev->pcie_info, "GEN ");
-      if (!interface_use_color)
-        wattroff(dev->pcie_info, A_DIM);
-      wstandend(dev->pcie_info);
-      if (GPUINFO_DYNAMIC_FIELD_VALID(&device->dynamic_info, pcie_link_gen) &&
-          GPUINFO_DYNAMIC_FIELD_VALID(&device->dynamic_info, pcie_link_width))
-        wprintw(dev->pcie_info, "%u@%2ux", device->dynamic_info.pcie_link_gen, device->dynamic_info.pcie_link_width);
-      else
-        wprintw(dev->pcie_info, "N/A");
-    }
-
-    if (interface_use_color)
-      wcolor_set(dev->pcie_info, dim_pair, NULL);
-    else
-      wattron(dev->pcie_info, A_DIM);
-    wprintw(dev->pcie_info, " RX: ");
-    if (!interface_use_color)
-      wattroff(dev->pcie_info, A_DIM);
-    wstandend(dev->pcie_info);
-    if (GPUINFO_DYNAMIC_FIELD_VALID(&device->dynamic_info, pcie_rx))
-      print_pcie_at_scale(dev->pcie_info, device->dynamic_info.pcie_rx);
-    else
-      wprintw(dev->pcie_info, "N/A");
-    if (interface_use_color)
-      wcolor_set(dev->pcie_info, dim_pair, NULL);
-    else
-      wattron(dev->pcie_info, A_DIM);
-    wprintw(dev->pcie_info, " TX: ");
-    if (!interface_use_color)
-      wattroff(dev->pcie_info, A_DIM);
-    wstandend(dev->pcie_info);
-    if (GPUINFO_DYNAMIC_FIELD_VALID(&device->dynamic_info, pcie_tx))
-      print_pcie_at_scale(dev->pcie_info, device->dynamic_info.pcie_tx);
-    else
-      wprintw(dev->pcie_info, "N/A");
-
-    wnoutrefresh(dev->pcie_info);
 
     if (interface->options.has_gpu_info_bar) {
       // Number of shader cores
@@ -1831,52 +1777,6 @@ static const char *option_selection_hidden[] = {
     "Setup", "Sort", "Kill", "Quit", "Save Config",
 };
 
-// Title bar: app name + device count on the left, live clock on the right.
-// Redrawn only on full redraws or once per second when the clock changes.
-static void draw_title(struct nvtop_interface *interface) {
-  static time_t last_drawn_second = 0;
-  time_t now = time(NULL);
-  if (!interface->redraw_all && now == last_drawn_second)
-    return;
-  last_drawn_second = now;
-
-  WINDOW *win = interface->title_window;
-  int rows, cols;
-  getmaxyx(win, rows, cols);
-  (void)rows;
-
-  wmove(win, 0, 0);
-  wclrtoeol(win);
-
-  wcolor_set(win, cyan_color, NULL);
-  wattron(win, A_BOLD);
-  wprintw(win, " nvtop");
-  wattroff(win, A_BOLD);
-  wstandend(win);
-  if (interface_use_color)
-    wcolor_set(win, dim_color, NULL);
-  else
-    wattron(win, A_DIM);
-  wprintw(win, " v%s", NVTOP_VERSION_STRING);
-  wprintw(win, "  %u GPU%s", interface->monitored_dev_count, interface->monitored_dev_count > 1 ? "s" : "");
-  if (!interface_use_color)
-    wattroff(win, A_DIM);
-
-  struct tm *tm_now = localtime(&now);
-  char clock[16];
-  if (strftime(clock, sizeof(clock), "%H:%M:%S", tm_now) > 0) {
-    if (interface_use_color)
-      wcolor_set(win, dim_color, NULL);
-    else
-      wattron(win, A_DIM);
-    int clock_len = (int)strlen(clock);
-    if (clock_len + 1 < cols)
-      mvwprintw(win, 0, cols - clock_len - 1, "%s", clock);
-    if (!interface_use_color)
-      wattroff(win, A_DIM);
-  }
-  wnoutrefresh(win);
-}
 static const char *option_selection_hidden_num[] = {
     "2", "6", "9", "10", "12",
 };
@@ -2142,8 +2042,6 @@ void draw_gpu_info_ncurses(unsigned devices_count, struct list_head *devices, st
   // plots and process list repaint once per data update (once per update
   // interval); between updates key presses redraw nothing and ncurses'
   // diff-based doupdate() emits no output at all.
-  draw_title(interface);
-
   if (interface->redraw_all || interface->devices_dirty) {
     draw_devices(devices, interface);
   }

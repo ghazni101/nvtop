@@ -329,6 +329,26 @@ void compute_sizes_from_layout(unsigned devices_count, unsigned device_header_ro
     }
   }
 
+  // The GPU/MEM meter bars keep auto-scaling with the terminal width: the
+  // last device of every row absorbs the leftover columns, down to a halved
+  // minimum device width (device_header_cols / 2). Below that minimum the
+  // device stays fixed and its fields clip at the screen edge.
+  if (num_device_per_row > 0) {
+    unsigned min_device_cols = device_header_cols / 2;
+    if (min_device_cols < 1)
+      min_device_cols = 1;
+    unsigned fixed_cols = (num_device_per_row - 1) * device_header_cols +
+                          (space_between_header_col ? num_device_per_row - 1 : 0) + (space_before_header ? 1 : 0);
+    for (unsigned i = 0; i < devices_count; ++i) {
+      if ((i + 1) % num_device_per_row == 0) {
+        if (cols > fixed_cols + min_device_cols)
+          device_positions[i].sizeX = cols - fixed_cols;
+        else
+          device_positions[i].sizeX = min_device_cols;
+      }
+    }
+  }
+
   unsigned rows_left_for_process = 0;
   if (*num_plots > 0) {
     unsigned rows_per_stack = rows_for_plots / num_plot_stacks;

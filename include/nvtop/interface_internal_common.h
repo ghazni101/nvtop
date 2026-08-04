@@ -53,10 +53,14 @@ enum interface_color {
   gpu_plot_color_4,
   dim_color,
   grid_color,
+  // Contrasting pairs to overlay the meter value text on top of the fill
+  value_on_green_color,
+  value_on_yellow_color,
+  value_on_red_color,
+  value_on_empty_color,
 };
 
 struct device_window {
-  WINDOW *name_win; // Name of the GPU
   WINDOW *gpu_util_enc_dec;
   WINDOW *gpu_util_no_enc_or_dec;
   WINDOW *gpu_util_no_enc_and_dec;
@@ -69,7 +73,6 @@ struct device_window {
   WINDOW *power_info;
   WINDOW *gpu_clock_info;
   WINDOW *mem_clock_info;
-  WINDOW *pcie_info;
   WINDOW *shader_cores;
   WINDOW *l2_cache_size;
   WINDOW *exec_engines;
@@ -150,7 +153,6 @@ struct nvtop_interface {
   struct device_window *devices_win;
   struct process_window process;
   WINDOW *shortcut_window;
-  WINDOW *title_window;
   unsigned num_plots;
   struct plot_window *plots;
   interface_ring_buffer saved_data_ring;
