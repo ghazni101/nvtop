@@ -1,5 +1,4 @@
 /*
- *
  * Copyright (C) 2018 Maxime Schmitt <maxime.schmitt91@gmail.com>
  *
  * This file is part of Nvtop.
@@ -30,9 +29,22 @@
 
 #define PLOT_MAX_LEGEND_SIZE 35
 
+// Enable/disable the unicode look (rounded frame, dotted grid, legend
+// swatches). When disabled the plot falls back to ACS line drawing.
+void nvtop_plot_set_unicode(bool use_unicode);
+
+// Enable/disable colored plot chrome (dim frame/grid via color pairs).
+void nvtop_plot_set_color(bool use_color);
+
 void nvtop_line_plot(WINDOW *win, size_t num_data, const double *data, unsigned num_plots, bool legend_left,
                      char legend[MAX_LINES_PER_PLOT][PLOT_MAX_LEGEND_SIZE]);
 
 void draw_rectangle(WINDOW *win, unsigned startX, unsigned startY, unsigned sizeX, unsigned sizeY);
+
+// Row (in the outer plot window coordinates) where a percentage level is
+// drawn by nvtop_line_plot for an inner plot window of rows_inner rows.
+// Axis labels and reference grids MUST use this mapping so they stay glued
+// to the trace at every terminal height.
+int plot_label_row(int rows_inner, unsigned percent);
 
 #endif // __PLOT_H_

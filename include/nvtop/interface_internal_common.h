@@ -51,6 +51,8 @@ enum interface_color {
   gpu_mem_plot_color,
   gpu_plot_color_3,
   gpu_plot_color_4,
+  dim_color,
+  grid_color,
 };
 
 struct device_window {
@@ -58,9 +60,7 @@ struct device_window {
   WINDOW *gpu_util_enc_dec;
   WINDOW *gpu_util_no_enc_or_dec;
   WINDOW *gpu_util_no_enc_and_dec;
-  WINDOW *mem_util_enc_dec;
-  WINDOW *mem_util_no_enc_or_dec;
-  WINDOW *mem_util_no_enc_and_dec;
+  WINDOW *mem_util;
   WINDOW *encode_util;
   WINDOW *decode_util;
   WINDOW *encdec_util;
@@ -90,6 +90,11 @@ struct option_window {
   unsigned int input_number;
 };
 
+struct gpuid_and_process {
+  unsigned gpu_id;
+  struct gpu_process *process;
+};
+
 struct process_window {
   unsigned offset;
   unsigned offset_column;
@@ -98,6 +103,14 @@ struct process_window {
   unsigned selected_row;
   pid_t selected_pid;
   struct option_window option_window;
+  // Cached process array: rebuilt only when fresh data arrives, re-sorted
+  // only when the sort criterion/order changes. Key navigation reuses it.
+  struct gpuid_and_process *cached_processes;
+  unsigned cached_count;
+  bool cache_valid;
+  bool sort_valid;
+  enum process_field cached_sort_by;
+  bool cached_sort_desc;
 };
 
 struct plot_window {
@@ -137,10 +150,19 @@ struct nvtop_interface {
   struct device_window *devices_win;
   struct process_window process;
   WINDOW *shortcut_window;
+  WINDOW *title_window;
   unsigned num_plots;
   struct plot_window *plots;
   interface_ring_buffer saved_data_ring;
   struct setup_window setup_win;
+  // Dirty flags: sections are only re-rendered when their inputs changed
+  // (new data landed once per update interval) or an interaction demands it.
+  // Between data updates, idle frames redraw nothing.
+  bool redraw_all;
+  bool devices_dirty;
+  bool process_dirty;
+  bool setup_dirty;
+  bool use_unicode;
 };
 
 enum device_field {
@@ -168,5 +190,9 @@ inline void set_attribute_between(WINDOW *win, int startY, int startX, int endX,
   int size = endX - startX;
   mvwchgat(win, startY, startX, size, attr, pair, NULL);
 }
+
+// Style for the shortcut bars: bold colored key, dim label. Implemented in
+// interface.c where the color state lives.
+void nvtop_print_shortcut(WINDOW *win, const char *key, const char *label);
 
 #endif // INTERFACE_INTERNAL_COMMON_H__

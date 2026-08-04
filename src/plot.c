@@ -1,5 +1,4 @@
 /*
- *
  * Copyright (C) 2019-2021 Maxime Schmitt <maxime.schmitt91@gmail.com>
  *
  * This file is part of Nvtop.
@@ -21,6 +20,7 @@
 
 #include "nvtop/plot.h"
 #include "nvtop/common.h"
+#include "nvtop/interface_internal_common.h"
 
 #include <assert.h>
 #include <ncurses.h>
@@ -28,8 +28,40 @@
 #include <string.h>
 #include <tgmath.h>
 
+static bool plot_unicode = false;
+static bool plot_color = false;
+
+void nvtop_plot_set_unicode(bool use_unicode) { plot_unicode = use_unicode; }
+
+void nvtop_plot_set_color(bool use_color) { plot_color = use_color; }
+
 static inline int data_level(double rows, double data, double increment) {
   return (int)(rows - round(data / increment));
+}
+
+int plot_label_row(int rows_inner, unsigned percent) {
+  double increment = 100. / (double)rows_inner;
+  return data_level((double)rows_inner, (double)percent, increment);
+}
+
+// Faint dotted reference lines at 25/50/75%, drawn BEFORE the trace so the
+// graph always paints over them. Uses the exact same data_level mapping as
+// the trace and the axis labels, so it never drifts at any terminal height.
+static void draw_plot_grid(WINDOW *win, int rows, int cols, double increment) {
+  if (rows < 6 || cols < 4)
+    return;
+  if (plot_color)
+    wcolor_set(win, grid_color, NULL);
+  static const unsigned grid_levels[3] = {25, 50, 75};
+  for (unsigned g = 0; g < ARRAY_SIZE(grid_levels); ++g) {
+    int r = data_level((double)rows, (double)grid_levels[g], increment);
+    if (r < 1 || r > rows - 1)
+      continue;
+    for (int x = 1; x < cols; x += 3)
+      mvwaddch(win, r, x, ACS_BULLET | A_DIM);
+  }
+  if (plot_color)
+    wcolor_set(win, 0, NULL);
 }
 
 void nvtop_line_plot(WINDOW *win, size_t num_data, const double *data, unsigned num_lines, bool legend_left,
@@ -40,6 +72,8 @@ void nvtop_line_plot(WINDOW *win, size_t num_data, const double *data, unsigned 
   getmaxyx(win, rows, cols);
   rows -= 1;
   double increment = 100. / (double)(rows);
+
+  draw_plot_grid(win, rows, cols, increment);
 
   assert(num_lines <= MAX_LINES_PER_PLOT && "Cannot plot more than " EXPAND_AND_QUOTE(MAX_LINES_PER_PLOT) " lines");
   static const short plot_line_colors[MAX_LINES_PER_PLOT] = {7, 8, 9, 10};
@@ -106,10 +140,27 @@ void nvtop_line_plot(WINDOW *win, size_t num_data, const double *data, unsigned 
       lvl_before[k] = lvl_now_k;
     }
   }
-  int plot_y_position = 0;
+  // The legend shares this window with the trace: row 0 coincides with the
+  // outer window's top border (the inner window starts at outer row 1), so
+  // start the legend at row 1 to avoid erasing the border.
+  int plot_y_position = 1;
   for (unsigned i = 0; i < num_lines && plot_y_position < rows; ++i) {
     wcolor_set(win, plot_line_colors[i], NULL);
-    if (legend_left) {
+    if (plot_unicode) {
+      // Colored swatch before the legend text
+      char legend_with_swatch[PLOT_MAX_LEGEND_SIZE + 8];
+      snprintf(legend_with_swatch, sizeof(legend_with_swatch), "\xe2\x96\x89 %s", legend[i]); // ▉
+      if (legend_left) {
+        mvwprintw(win, plot_y_position, 0, "%.*s", cols, legend_with_swatch);
+      } else {
+        size_t length = strlen(legend_with_swatch);
+        if (length <= (size_t)cols) {
+          mvwprintw(win, plot_y_position, cols - length, "%s", legend_with_swatch);
+        } else {
+          mvwprintw(win, plot_y_position, 0, "%.*s", cols, legend_with_swatch);
+        }
+      }
+    } else if (legend_left) {
       mvwprintw(win, plot_y_position, 0, "%.*s", cols, legend[i]);
     } else {
       size_t length = strlen(legend[i]);
@@ -124,14 +175,36 @@ void nvtop_line_plot(WINDOW *win, size_t num_data, const double *data, unsigned 
 }
 
 void draw_rectangle(WINDOW *win, unsigned startX, unsigned startY, unsigned sizeX, unsigned sizeY) {
-  mvwhline(win, startY, startX + 1, 0, sizeX - 2);
-  mvwhline(win, startY + sizeY - 1, startX + 1, 0, sizeX - 2);
+  if (plot_color)
+    wattr_set(win, A_DIM, dim_color, NULL);
+  else
+    wattron(win, A_DIM);
 
-  mvwvline(win, startY + 1, startX, 0, sizeY - 2);
-  mvwvline(win, startY + 1, startX + sizeX - 1, 0, sizeY - 2);
-
-  mvwaddch(win, startY, startX, ACS_ULCORNER);
-  mvwaddch(win, startY, startX + sizeX - 1, ACS_URCORNER);
-  mvwaddch(win, startY + sizeY - 1, startX, ACS_LLCORNER);
-  mvwaddch(win, startY + sizeY - 1, startX + sizeX - 1, ACS_LRCORNER);
+  if (plot_unicode && sizeX >= 2 && sizeY >= 2) {
+    // Rounded unicode frame
+    for (unsigned x = startX + 1; x < startX + sizeX - 1; ++x) {
+      mvwaddstr(win, startY, x, "\xe2\x94\x80");           // ─
+      mvwaddstr(win, startY + sizeY - 1, x, "\xe2\x94\x80"); // ─
+    }
+    for (unsigned y = startY + 1; y < startY + sizeY - 1; ++y) {
+      mvwaddstr(win, y, startX, "\xe2\x94\x82");               // │
+      mvwaddstr(win, y, startX + sizeX - 1, "\xe2\x94\x82");   // │
+    }
+    mvwaddstr(win, startY, startX, "\xe2\x95\xad");                       // ╭
+    mvwaddstr(win, startY, startX + sizeX - 1, "\xe2\x95\xae");           // ╮
+    mvwaddstr(win, startY + sizeY - 1, startX, "\xe2\x95\xb0");           // ╰
+    mvwaddstr(win, startY + sizeY - 1, startX + sizeX - 1, "\xe2\x95\xaf"); // ╯
+  } else {
+    mvwhline(win, startY, startX + 1, 0, sizeX - 2);
+    mvwhline(win, startY + sizeY - 1, startX + 1, 0, sizeX - 2);
+    mvwvline(win, startY + 1, startX, 0, sizeY - 2);
+    mvwvline(win, startY + 1, startX + sizeX - 1, 0, sizeY - 2);
+    mvwaddch(win, startY, startX, ACS_ULCORNER);
+    mvwaddch(win, startY, startX + sizeX - 1, ACS_URCORNER);
+    mvwaddch(win, startY + sizeY - 1, startX, ACS_LLCORNER);
+    mvwaddch(win, startY + sizeY - 1, startX + sizeX - 1, ACS_LRCORNER);
+  }
+  wattroff(win, A_DIM);
+  if (plot_color)
+    wattr_set(win, A_NORMAL, 0, NULL);
 }

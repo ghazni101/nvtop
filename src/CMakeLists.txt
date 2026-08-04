@@ -185,6 +185,10 @@ set_property(TARGET nvtop PROPERTY C_STANDARD 11)
 
 target_compile_definitions(nvtop PRIVATE _GNU_SOURCE)
 
+if(NVTOP_HAVE_WIDE_CURSES)
+  target_compile_definitions(nvtop PRIVATE NVTOP_HAVE_WIDE_CURSES=1)
+endif()
+
 target_link_libraries(nvtop
   PRIVATE ncurses m ${CMAKE_DL_LIBS})
 

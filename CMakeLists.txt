@@ -34,6 +34,38 @@ if (NOT CURSE_FOUND)
   find_package(Curses REQUIRED)
 endif()
 
+# Wide-character ncurses enables the unicode look (rounded frames, gradient
+# meters). ncurses exposes the wide API only when _GNU_SOURCE or
+# _XOPEN_SOURCE_EXTENDED is defined (the target builds with _GNU_SOURCE).
+include(CheckCSourceCompiles)
+set(CMAKE_REQUIRED_DEFINITIONS "-D_GNU_SOURCE")
+set(CMAKE_REQUIRED_LIBRARIES ${CURSES_LIBRARIES})
+check_c_source_compiles("#include <curses.h>
+int main(void) { cchar_t c; (void)c; return 0; }" NVTOP_HAVE_WIDE_CURSES)
+
+if(NOT NVTOP_HAVE_WIDE_CURSES)
+  find_path(NCURSESW_INCLUDE_DIR NAMES curses.h
+    PATHS /usr/include/ncursesw /usr/local/include/ncursesw
+    NO_DEFAULT_PATH)
+  if(NCURSESW_INCLUDE_DIR)
+    list(PREPEND CURSES_INCLUDE_DIRS ${NCURSESW_INCLUDE_DIR})
+    find_library(NCURSESW_LIBRARY NAMES ncursesw)
+    if(NCURSESW_LIBRARY)
+      set(CURSES_NCURSES_LIBRARY ${NCURSESW_LIBRARY})
+      set(CURSES_LIBRARIES ${NCURSESW_LIBRARY})
+    endif()
+    set(CMAKE_REQUIRED_INCLUDES ${CURSES_INCLUDE_DIRS})
+    check_c_source_compiles("#include <curses.h>
+int main(void) { cchar_t c; (void)c; return 0; }" NVTOP_HAVE_WIDE_CURSES)
+    unset(CMAKE_REQUIRED_INCLUDES)
+  endif()
+endif()
+unset(CMAKE_REQUIRED_DEFINITIONS)
+unset(CMAKE_REQUIRED_LIBRARIES)
+if(NVTOP_HAVE_WIDE_CURSES)
+  message(STATUS "Wide-character ncurses found: unicode interface enabled")
+endif()
+
 add_library(ncurses INTERFACE IMPORTED)
 set_property(TARGET ncurses PROPERTY
   INTERFACE_INCLUDE_DIRECTORIES ${CURSES_INCLUDE_DIRS})
