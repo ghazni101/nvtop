@@ -165,9 +165,12 @@ void processinfo_sweep_fdinfos(void) {
       fd_num = atoi(fdinfo_dent->d_name);
 
       // check if this fd refers to the same open file as any seen ones.
-      // we only care about unique opens
+      // we only care about unique opens. kcmp returns 0 for equal files and
+      // 1 for different ones; a negative return is an error (e.g. EPERM), in
+      // which case we must NOT treat the fd as a duplicate or we would skip
+      // legitimate unique fds and undercount the process usage.
       for (unsigned i = 0; i < seen_fds_len; i++) {
-        if (syscall(SYS_kcmp, client_pid, client_pid, KCMP_FILE, fd_num, seen_fds[i]) <= 0)
+        if (syscall(SYS_kcmp, client_pid, client_pid, KCMP_FILE, fd_num, seen_fds[i]) == 0)
           goto next_fd;
       }
 

@@ -129,6 +129,7 @@ void alloc_interface_options_internals(char *config_location, unsigned num_devic
   options->show_startup_messages = true;
   options->filter_nvtop_pid = true;
   options->has_gpu_info_bar = false;
+  options->hide_processes_list = false;
   options->gpu_plot_color_idx[0] = 1;  // Cyan
   options->gpu_plot_color_idx[1] = 3;  // Yellow
   options->gpu_plot_color_idx[2] = 2;  // Green

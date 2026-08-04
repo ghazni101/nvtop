@@ -234,6 +234,8 @@ extern const char drm_client_id[];
 
 inline unsigned busy_usage_from_time_usage_round(uint64_t current_use_ns, uint64_t previous_use_ns,
                                                  uint64_t time_between_measurement) {
+  if (time_between_measurement == 0)
+    return 0;
   return ((current_use_ns - previous_use_ns) * UINT64_C(100) + time_between_measurement / UINT64_C(2)) /
          time_between_measurement;
 }

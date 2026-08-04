@@ -110,6 +110,7 @@ int main(int argc, char **argv) {
   bool use_fahrenheit_option = false;
   bool hide_plot_option = false;
   bool hide_processes_option = false;
+  bool hide_processes_option_set = false;
   bool reverse_plot_direction_option = false;
   bool encode_decode_timer_option_set = false;
   bool show_gpu_info_bar = false;
@@ -171,6 +172,7 @@ int main(int argc, char **argv) {
       break;
     case 'P':
       hide_processes_option = true;
+      hide_processes_option_set = true;
       break;
     case 'r':
       reverse_plot_direction_option = true;
@@ -294,7 +296,11 @@ int main(int argc, char **argv) {
       allDevicesOptions.gpu_specific_opts[i].to_draw = 0;
     }
   }
-  allDevicesOptions.hide_processes_list = hide_processes_option;
+  // The CLI option takes precedence, but only when actually given on the
+  // command line: otherwise the value loaded from the config file (saved
+  // via the setup window / F12) must survive.
+  if (hide_processes_option_set)
+    allDevicesOptions.hide_processes_list = hide_processes_option;
   if (encode_decode_timer_option_set) {
     allDevicesOptions.encode_decode_hiding_timer = encode_decode_hide_time;
     if (allDevicesOptions.encode_decode_hiding_timer < 0.)

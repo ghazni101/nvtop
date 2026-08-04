@@ -976,14 +976,18 @@ static bool parse_drm_fdinfo_amd(struct gpu_info *info, FILE *fdinfo_file, struc
 
     // Check if we already processed this client_id in the current update cycle.
     // This can happen when a process has multiple file descriptors referencing
-    // the same DRM client (e.g., via DRM master operations).
+    // the same DRM client (e.g., via DRM master operations). The fdinfo of all
+    // those fds reports the SAME cumulative engine times, so the busy usage
+    // computed above would be merged into the process a second time and the
+    // reported usage would be doubled. Returning false makes the caller skip
+    // this fdinfo file entirely: the first fd already accounted for it.
     struct amdgpu_process_info_cache *cache_entry_check;
     HASH_FIND_CLIENT(gpu_info->current_update_process_cache, &cache_entry->client_id, cache_entry_check);
     if (cache_entry_check) {
       // Already processed this client_id, free the entry if we allocated it
       if (cache_entry != cache_entry_check)
         free(cache_entry);
-      goto parse_fdinfo_exit;
+      return false;
     }
 
     // Store this measurement data

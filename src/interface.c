@@ -235,11 +235,16 @@ static void initialize_gpu_mem_plot(struct plot_window *plot, struct window_posi
     wcolor_set(plot->win, dim_color, NULL);
   else
     wattron(plot->win, A_DIM);
-  mvwprintw(plot->win, 1 + rows * 3 / 4, 0, " 25");
-  mvwprintw(plot->win, 1 + rows / 4, 0, " 75");
-  mvwprintw(plot->win, 1 + rows / 2, 0, " 50");
-  mvwprintw(plot->win, 1, 0, "100");
-  mvwprintw(plot->win, rows, 0, "  0");
+  // The trace maps data -> row with data_level(rows-1, ...) (nvtop_line_plot
+  // decrements the window height by one), so the labels must use the exact
+  // same mapping via plot_label_row() plus one to go from inner to outer
+  // window coordinates. Hard-coded linear rows drift by a row at some
+  // terminal heights and no longer sit on the grid/trace.
+  mvwprintw(plot->win, plot_label_row(rows - 1, 25) + 1, 0, " 25");
+  mvwprintw(plot->win, plot_label_row(rows - 1, 75) + 1, 0, " 75");
+  mvwprintw(plot->win, plot_label_row(rows - 1, 50) + 1, 0, " 50");
+  mvwprintw(plot->win, plot_label_row(rows - 1, 100) + 1, 0, "100");
+  mvwprintw(plot->win, plot_label_row(rows - 1, 0) + 1, 0, "  0");
   plot->data = calloc(cols, sizeof(*plot->data));
   plot->num_data = cols;
 
@@ -1184,7 +1189,7 @@ static int compare_process_type_desc(const void *pp1, const void *pp2) {
   return (p1->process->type == gpu_process_graphical) != (p2->process->type == gpu_process_graphical);
 }
 
-static int compare_process_type_asc(const void *pp1, const void *pp2) { return -compare_process_name_desc(pp1, pp2); }
+static int compare_process_type_asc(const void *pp1, const void *pp2) { return -compare_process_type_desc(pp1, pp2); }
 
 static int compare_process_gpu_rate_desc(const void *pp1, const void *pp2) {
   const struct gpuid_and_process *p1 = (const struct gpuid_and_process *)pp1;
@@ -1445,7 +1450,7 @@ static void print_processes_on_screen(all_processes all_procs, struct process_wi
     if (process_is_field_displayed(process_gpu_id, fields_to_display)) {
       size_t size = snprintf(guid_str, sizeof_process_field[process_gpu_id] + 1, "%u", processes[i].gpu_id);
       if (size >= sizeof_process_field[process_gpu_id] + 1)
-        pid_str[sizeof_process_field[process_gpu_id]] = '\0';
+        guid_str[sizeof_process_field[process_gpu_id]] = '\0';
       printed += snprintf(&process_print_buffer[printed], process_buffer_line_size - printed, "%*s ",
                           sizeof_process_field[process_gpu_id], guid_str);
     }

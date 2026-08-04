@@ -78,11 +78,18 @@ void nvtop_line_plot(WINDOW *win, size_t num_data, const double *data, unsigned 
   assert(num_lines <= MAX_LINES_PER_PLOT && "Cannot plot more than " EXPAND_AND_QUOTE(MAX_LINES_PER_PLOT) " lines");
   static const short plot_line_colors[MAX_LINES_PER_PLOT] = {7, 8, 9, 10};
   unsigned lvl_before[MAX_LINES_PER_PLOT];
-  for (size_t k = 0; k < num_lines; ++k)
+  for (size_t k = 0; k < num_lines && k < num_data; ++k)
     lvl_before[k] = data_level(rows, data[k], increment);
+  // Lines beyond the data are never drawn (guarded below), so leave their
+  // lvl_before slot untouched.
 
-  for (size_t i = 0; i < num_data || i < (size_t)cols; i += num_lines) {
+  for (size_t i = 0; i < num_data; i += num_lines) {
     for (unsigned k = 0; k < num_lines; ++k) {
+      // The last group of columns may be partial: never read (or draw) past
+      // the end of the data array. num_data is the plot width, so this also
+      // keeps the x coordinate inside the window.
+      if (i + k >= num_data)
+        continue;
       unsigned lvl_now_k = data_level(rows, data[i + k], increment);
       wcolor_set(win, plot_line_colors[k], NULL);
       // Three cases: has increased, has decreased and remained level
@@ -167,7 +174,8 @@ void nvtop_line_plot(WINDOW *win, size_t num_data, const double *data, unsigned 
       if (length <= (size_t)cols) {
         mvwprintw(win, plot_y_position, cols - length, "%s", legend[i]);
       } else {
-        mvwprintw(win, plot_y_position, 0, "%.*s", (int)(length - cols), legend[i]);
+        // Legend wider than the window: print its first cols characters.
+        mvwprintw(win, plot_y_position, 0, "%.*s", cols, legend[i]);
       }
     }
     plot_y_position++;
