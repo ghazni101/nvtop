@@ -360,6 +360,17 @@ static void initialize_all_windows(struct nvtop_interface *dwin) {
   alloc_plot_window(devices_count, plot_positions, map_device_to_plot, dwin);
 
   bool compact_header = layout_rows < 14;
+  // Without card frames there is no border to host the settings gear, so
+  // compact layouts get a standalone one in the screen's top-right corner.
+  dwin->gear_window = NULL;
+  dwin->gear_count = 0;
+  if (compact_header && interface_unicode && cols >= 70) {
+    dwin->gear_window = newwin(1, 3, 0, cols - 4);
+    dwin->gear_count = 1;
+    dwin->gear_rects[0].y = 0;
+    dwin->gear_rects[0].x0 = cols - 4;
+    dwin->gear_rects[0].x1 = cols - 2;
+  }
   for (unsigned int i = 0; i < devices_count; ++i) {
     alloc_device_window(device_positions[i].posY, device_positions[i].posX, device_positions[i].sizeX,
                         device_positions[i].sizeY, !compact_header, dwin->options.show_header_stats,
@@ -386,6 +397,7 @@ static void delete_all_windows(struct nvtop_interface *dwin) {
   delwin(dwin->process.frame_win);
   dwin->process.frame_win = NULL;
   delwin(dwin->shortcut_window);
+  delwin(dwin->gear_window);
   delwin(dwin->process.option_window.option_win);
   for (size_t i = 0; i < dwin->num_plots; ++i) {
     delwin(dwin->plots[i].win);
@@ -793,7 +805,8 @@ static void encode_decode_show_select(struct device_window *dev, bool encode_val
 static void draw_devices(struct list_head *devices, struct nvtop_interface *interface) {
   struct gpu_info *device;
   unsigned dev_id = 0;
-  interface->gear_count = 0;
+  // Compact mode keeps the standalone corner gear (index 0) alive.
+  interface->gear_count = interface->gear_window ? 1 : 0;
 
   list_for_each_entry(device, devices, list) {
     struct device_window *dev = &interface->devices_win[dev_id];
@@ -821,6 +834,14 @@ static void draw_devices(struct list_head *devices, struct nvtop_interface *inte
       } else {
         gpu_util_win = dev->gpu_util_no_enc_and_dec;
       }
+    }
+    // Standalone compact-mode gear in the screen's top-right corner.
+    if (interface->gear_window) {
+      werase(interface->gear_window);
+      wattr_set(interface->gear_window, A_BOLD, interface_use_color ? cyan_color : 0, NULL);
+      mvwaddstr(interface->gear_window, 0, 0, " \xe2\x9a\x99 "); // ⚙
+      wattr_set(interface->gear_window, A_NORMAL, 0, NULL);
+      wnoutrefresh(interface->gear_window);
     }
     // Card chrome: open-bottom frame — the top border carries the GPU
     // identity and side rails run down past the last field row, where the

@@ -180,6 +180,7 @@ struct nvtop_interface {
   struct device_window *devices_win;
   struct process_window process;
   WINDOW *shortcut_window;
+  WINDOW *gear_window; // Standalone settings gear when cards have no frame
   unsigned num_plots;
   struct plot_window *plots;
   interface_ring_buffer saved_data_ring;
