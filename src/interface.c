@@ -2075,6 +2075,8 @@ static unsigned populate_plot_data_from_ring_buffer(const struct nvtop_interface
 
 static void draw_plots(struct nvtop_interface *interface) {
   for (unsigned plot_id = 0; plot_id < interface->num_plots; ++plot_id) {
+    // The frame window (plot->win) is never erased here: it only carries
+    // the border, axis labels and legend, all redrawn on layout changes.
     werase(interface->plots[plot_id].plot_window);
 
     char plot_legend[MAX_LINES_PER_PLOT][PLOT_MAX_LEGEND_SIZE];
@@ -2086,8 +2088,11 @@ static void draw_plots(struct nvtop_interface *interface) {
     nvtop_line_plot(interface->plots[plot_id].plot_window, interface->plots[plot_id].num_data,
                     interface->plots[plot_id].data, num_lines);
     // Unicode mode carries the legend on the frame's top border, keeping
-    // every inner row for the trace itself.
-    nvtop_plot_draw_legend(interface->plots[plot_id].win, 3,
+    // every inner row for the trace itself. The border must start where
+    // the frame was drawn: after the axis gutter when the axis is shown,
+    // flush at the edge otherwise.
+    nvtop_plot_draw_legend(interface->plots[plot_id].win,
+                           interface->options.show_chart_axis ? 3 : 0,
                            interface->options.show_chart_legend ? num_lines : 0,
                            !interface->options.plot_left_to_right, plot_legend);
 
