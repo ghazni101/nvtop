@@ -91,24 +91,10 @@ static unsigned int sizeof_process_field[process_field_count] = {
 };
 
 static void alloc_device_window(unsigned int start_row, unsigned int start_col, unsigned int totalcol,
-                                unsigned int totalrow, bool with_frame, bool with_stats,
-                                struct device_window *dwin) {
+                                unsigned int totalrow, bool with_stats, struct device_window *dwin) {
 
   const unsigned int spacer = 1;
-
-  // Card chrome: an open-bottom frame (top border carrying the GPU name,
-  // side rails) painted by draw_devices. The content windows are inset by
-  // one cell below the border and one column inside the rails. Compact
-  // layouts skip the frame entirely and start directly with the fields.
-  dwin->frame_win = NULL;
-  if (with_frame) {
-    dwin->frame_win = newwin(totalrow, totalcol, start_row, start_col);
-    if (dwin->frame_win == NULL)
-      goto alloc_error;
-    start_row += 1;
-    start_col += 1;
-    totalcol -= 2;
-  }
+  (void)totalrow;
 
   // Line 1 = GPU clk | MEM clk | Temp | Fan | Power (optional)
   dwin->gpu_clock_info = NULL;
@@ -210,7 +196,6 @@ alloc_error:
 }
 
 static void free_device_windows(struct device_window *dwin) {
-  delwin(dwin->frame_win);
   delwin(dwin->gpu_util_enc_dec);
   delwin(dwin->gpu_util_no_enc_or_dec);
   delwin(dwin->gpu_util_no_enc_and_dec);
@@ -349,9 +334,8 @@ static void initialize_all_windows(struct nvtop_interface *dwin) {
   int layout_rows = rows - (show_shortcut_bar ? 1 : 0);
   if (layout_rows < 1)
     layout_rows = 1;
-  compute_sizes_from_layout(devices_count,
-                            (dwin->options.has_gpu_info_bar ? 4 : 3) + (layout_rows < 14 ? 0 : 1) -
-                                (dwin->options.show_header_stats ? 0 : 1),
+  compute_sizes_from_layout(devices_count, (dwin->options.has_gpu_info_bar ? 4 : 3) -
+                                                (dwin->options.show_header_stats ? 0 : 1),
                             device_length(), (unsigned)layout_rows, cols, dwin->options.gpu_specific_opts,
                             dwin->options.process_fields_displayed, device_positions, &dwin->num_plots,
                             plot_positions, map_device_to_plot, &process_position, &setup_position,
@@ -359,12 +343,10 @@ static void initialize_all_windows(struct nvtop_interface *dwin) {
 
   alloc_plot_window(devices_count, plot_positions, map_device_to_plot, dwin);
 
-  bool compact_header = layout_rows < 14;
-  // Without card frames there is no border to host the settings gear, so
-  // compact layouts get a standalone one in the screen's top-right corner.
+  // The settings gear floats in the screen's top-right corner.
   dwin->gear_window = NULL;
   dwin->gear_count = 0;
-  if (compact_header && interface_unicode && cols >= 70) {
+  if (interface_unicode && cols >= 70) {
     dwin->gear_window = newwin(1, 3, 0, cols - 4);
     dwin->gear_count = 1;
     dwin->gear_rects[0].y = 0;
@@ -373,8 +355,7 @@ static void initialize_all_windows(struct nvtop_interface *dwin) {
   }
   for (unsigned int i = 0; i < devices_count; ++i) {
     alloc_device_window(device_positions[i].posY, device_positions[i].posX, device_positions[i].sizeX,
-                        device_positions[i].sizeY, !compact_header, dwin->options.show_header_stats,
-                        &dwin->devices_win[i]);
+                        device_positions[i].sizeY, dwin->options.show_header_stats, &dwin->devices_win[i]);
   }
 
   alloc_process_with_option(dwin, process_position.posX, process_position.posY, process_position.sizeX,
@@ -843,80 +824,6 @@ static void draw_devices(struct list_head *devices, struct nvtop_interface *inte
       wattr_set(interface->gear_window, A_NORMAL, 0, NULL);
       wnoutrefresh(interface->gear_window);
     }
-    // Card chrome: open-bottom frame — the top border carries the GPU
-    // identity and side rails run down past the last field row, where the
-    // plot frame below closes the shape. Refreshed before the fields so
-    // they composite above it.
-    if (dev->frame_win) {
-      int frows, fcols;
-      getmaxyx(dev->frame_win, frows, fcols);
-      werase(dev->frame_win);
-      if (interface_unicode) {
-        mvwaddstr(dev->frame_win, 0, 0, "\xe2\x95\xad");                         // ╭
-        for (int x = 1; x < fcols - 1; ++x)
-          mvwaddstr(dev->frame_win, 0, x, "\xe2\x94\x80");                       // ─
-        mvwaddstr(dev->frame_win, 0, fcols - 1, "\xe2\x95\xae");                 // ╮
-        for (int y = 1; y < frows; ++y) {
-          mvwaddstr(dev->frame_win, y, 0, "\xe2\x94\x82");                       // │
-          mvwaddstr(dev->frame_win, y, fcols - 1, "\xe2\x94\x82");               // │
-        }
-      } else {
-        mvwaddch(dev->frame_win, 0, 0, ACS_ULCORNER);
-        mvwhline(dev->frame_win, 0, 1, 0, fcols - 2);
-        mvwaddch(dev->frame_win, 0, fcols - 1, ACS_URCORNER);
-        for (int y = 1; y < frows; ++y) {
-          mvwaddch(dev->frame_win, y, 0, ACS_VLINE);
-          mvwaddch(dev->frame_win, y, fcols - 1, ACS_VLINE);
-        }
-      }
-      // Settings gear in the top-right of the border; clicking it opens
-      // the setup window (see interface_handle_mouse).
-      int gear_x = fcols - 4;
-      if (interface_unicode && gear_x > 2) {
-        wattr_set(dev->frame_win, A_BOLD, interface_use_color ? cyan_color : 0, NULL);
-        mvwaddstr(dev->frame_win, 0, gear_x, " \xe2\x9a\x99 "); // ⚙
-        wattr_set(dev->frame_win, A_NORMAL, 0, NULL);
-        if (interface->gear_count < ARRAY_SIZE(interface->gear_rects)) {
-          int by = 0, bx = 0;
-          getbegyx(dev->frame_win, by, bx);
-          interface->gear_rects[interface->gear_count].y = by;
-          interface->gear_rects[interface->gear_count].x0 = bx + gear_x;
-          interface->gear_rects[interface->gear_count].x1 = bx + gear_x + 2;
-          interface->gear_count++;
-        }
-      }
-      char id[16];
-      snprintf(id, sizeof(id), "GPU %u", dev_id);
-      const char *name = NULL;
-      if (GPUINFO_STATIC_FIELD_VALID(&device->static_info, device_name))
-        name = device->static_info.device_name;
-      const char *sep = interface_unicode ? " \xe2\x94\x80 " : " - "; // ─
-      int id_len = (int)strlen(id);
-      const int sep_cols = 3; // display columns of sep
-      int pos = 2;
-      if (fcols >= 2 * sep_cols + id_len + 4) {
-        mvwaddch(dev->frame_win, 0, pos++, ' ');
-        wattr_set(dev->frame_win, A_BOLD, interface_use_color ? cyan_color : 0, NULL);
-        mvwprintw(dev->frame_win, 0, pos, "%s", id);
-        pos += id_len;
-        wattr_set(dev->frame_win, A_NORMAL, 0, NULL);
-        if (name && name[0]) {
-          int budget = fcols - 1 /*╮*/ - pos - sep_cols - 1 /*trailing space*/ - (interface_unicode ? 4 : 0) /*gear zone*/;
-          if (budget > 0) {
-            int name_len = (int)strlen(name);
-            if (name_len > budget)
-              name_len = budget;
-            mvwaddstr(dev->frame_win, 0, pos, sep);
-            pos += sep_cols;
-            mvwprintw(dev->frame_win, 0, pos, "%.*s", name_len, name);
-            pos += name_len;
-            mvwaddch(dev->frame_win, 0, pos, ' ');
-          }
-        }
-      }
-      wnoutrefresh(dev->frame_win);
-    }
-
     char buff[1024];
     if (display_encode) {
       unsigned rate =

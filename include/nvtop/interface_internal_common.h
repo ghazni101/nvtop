@@ -86,7 +86,6 @@ enum interface_color {
 };
 
 struct device_window {
-  WINDOW *frame_win; // Card chrome: rounded frame carrying the GPU name
   WINDOW *gpu_util_enc_dec;
   WINDOW *gpu_util_no_enc_or_dec;
   WINDOW *gpu_util_no_enc_and_dec;
