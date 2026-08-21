@@ -131,6 +131,11 @@ void alloc_interface_options_internals(char *config_location, unsigned num_devic
   options->has_gpu_info_bar = false;
   options->hide_processes_list = false;
   options->show_header_stats = true;
+  options->show_gpu_clock_stat = true;
+  options->show_mem_clock_stat = true;
+  options->show_temp_stat = true;
+  options->show_fan_stat = true;
+  options->show_power_stat = true;
   options->show_chart_legend = true;
   options->show_chart_axis = true;
   options->show_shortcut_bar = true;
@@ -182,6 +187,11 @@ static const char header_value_use_fahrenheit[] = "UseFahrenheit";
 static const char header_value_encode_decode_timer[] = "EncodeHideTimer";
 static const char header_value_gpu_info_bar[] = "GPUInfoBar";
 static const char header_value_show_stats[] = "ShowHeaderStats";
+static const char header_value_show_gpu_clock[] = "ShowGpuClock";
+static const char header_value_show_mem_clock[] = "ShowMemClock";
+static const char header_value_show_temp[] = "ShowTemp";
+static const char header_value_show_fan[] = "ShowFan";
+static const char header_value_show_power[] = "ShowPower";
 
 static const char chart_section[] = "ChartOption";
 static const char chart_value_reverse[] = "ReverseChart";
@@ -277,6 +287,36 @@ static int nvtop_option_ini_handler(void *user, const char *section, const char 
       if (strcmp(value, "false") == 0) {
         ini_data->options->show_header_stats = false;
       }
+    }
+    if (strcmp(name, header_value_show_gpu_clock) == 0) {
+      if (strcmp(value, "true") == 0)
+        ini_data->options->show_gpu_clock_stat = true;
+      if (strcmp(value, "false") == 0)
+        ini_data->options->show_gpu_clock_stat = false;
+    }
+    if (strcmp(name, header_value_show_mem_clock) == 0) {
+      if (strcmp(value, "true") == 0)
+        ini_data->options->show_mem_clock_stat = true;
+      if (strcmp(value, "false") == 0)
+        ini_data->options->show_mem_clock_stat = false;
+    }
+    if (strcmp(name, header_value_show_temp) == 0) {
+      if (strcmp(value, "true") == 0)
+        ini_data->options->show_temp_stat = true;
+      if (strcmp(value, "false") == 0)
+        ini_data->options->show_temp_stat = false;
+    }
+    if (strcmp(name, header_value_show_fan) == 0) {
+      if (strcmp(value, "true") == 0)
+        ini_data->options->show_fan_stat = true;
+      if (strcmp(value, "false") == 0)
+        ini_data->options->show_fan_stat = false;
+    }
+    if (strcmp(name, header_value_show_power) == 0) {
+      if (strcmp(value, "true") == 0)
+        ini_data->options->show_power_stat = true;
+      if (strcmp(value, "false") == 0)
+        ini_data->options->show_power_stat = false;
     }
   }
   // Chart Options
@@ -463,6 +503,11 @@ bool save_interface_options_to_config_file(unsigned total_dev_count, const nvtop
   fprintf(config_file, "%s = %e\n", header_value_encode_decode_timer, options->encode_decode_hiding_timer);
   fprintf(config_file, "%s = %s\n", header_value_gpu_info_bar, boolean_string(options->has_gpu_info_bar));
   fprintf(config_file, "%s = %s\n", header_value_show_stats, boolean_string(options->show_header_stats));
+  fprintf(config_file, "%s = %s\n", header_value_show_gpu_clock, boolean_string(options->show_gpu_clock_stat));
+  fprintf(config_file, "%s = %s\n", header_value_show_mem_clock, boolean_string(options->show_mem_clock_stat));
+  fprintf(config_file, "%s = %s\n", header_value_show_temp, boolean_string(options->show_temp_stat));
+  fprintf(config_file, "%s = %s\n", header_value_show_fan, boolean_string(options->show_fan_stat));
+  fprintf(config_file, "%s = %s\n", header_value_show_power, boolean_string(options->show_power_stat));
 
   // Chart Options
   fprintf(config_file, "\n[%s]\n", chart_section);

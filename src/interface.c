@@ -91,42 +91,50 @@ static unsigned int sizeof_process_field[process_field_count] = {
 };
 
 static void alloc_device_window(unsigned int start_row, unsigned int start_col, unsigned int totalcol,
-                                unsigned int totalrow, bool with_stats, struct device_window *dwin) {
+                                unsigned int totalrow, const nvtop_interface_option *opts,
+                                struct device_window *dwin) {
 
   const unsigned int spacer = 1;
   (void)totalrow;
 
-  // Line 1 = GPU clk | MEM clk | Temp | Fan | Power (optional)
+  // Line 1 = GPU clk | MEM clk | Temp | Fan | Power (each field optional)
   dwin->gpu_clock_info = NULL;
   dwin->mem_clock_info = NULL;
   dwin->temperature = NULL;
   dwin->fan_speed = NULL;
   dwin->power_info = NULL;
   unsigned meter_row = start_row;
-  if (with_stats) {
-    dwin->gpu_clock_info = newwin(1, sizeof_device_field[device_clock], start_row, start_col);
-    if (dwin->gpu_clock_info == NULL)
-      goto alloc_error;
-    dwin->mem_clock_info = newwin(1, sizeof_device_field[device_mem_clock], start_row,
-                                  start_col + spacer + sizeof_device_field[device_clock]);
-    if (dwin->mem_clock_info == NULL)
-      goto alloc_error;
-    dwin->temperature =
-        newwin(1, sizeof_device_field[device_temperature], start_row,
-               start_col + spacer * 2 + sizeof_device_field[device_clock] + sizeof_device_field[device_mem_clock]);
-    if (dwin->temperature == NULL)
-      goto alloc_error;
-    dwin->fan_speed = newwin(1, sizeof_device_field[device_fan_speed], start_row,
-                             start_col + spacer * 3 + sizeof_device_field[device_clock] +
-                                 sizeof_device_field[device_mem_clock] + sizeof_device_field[device_temperature]);
-    if (dwin->fan_speed == NULL)
-      goto alloc_error;
-    dwin->power_info =
-        newwin(1, sizeof_device_field[device_power], start_row,
-               start_col + spacer * 4 + sizeof_device_field[device_clock] + sizeof_device_field[device_mem_clock] +
-                   sizeof_device_field[device_temperature] + sizeof_device_field[device_fan_speed]);
-    if (dwin->power_info == NULL)
-      goto alloc_error;
+  if (opts->show_header_stats) {
+    unsigned int offset = start_col;
+    if (opts->show_gpu_clock_stat) {
+      dwin->gpu_clock_info = newwin(1, sizeof_device_field[device_clock], start_row, offset);
+      if (dwin->gpu_clock_info == NULL)
+        goto alloc_error;
+      offset += spacer + sizeof_device_field[device_clock];
+    }
+    if (opts->show_mem_clock_stat) {
+      dwin->mem_clock_info = newwin(1, sizeof_device_field[device_mem_clock], start_row, offset);
+      if (dwin->mem_clock_info == NULL)
+        goto alloc_error;
+      offset += spacer + sizeof_device_field[device_mem_clock];
+    }
+    if (opts->show_temp_stat) {
+      dwin->temperature = newwin(1, sizeof_device_field[device_temperature], start_row, offset);
+      if (dwin->temperature == NULL)
+        goto alloc_error;
+      offset += spacer + sizeof_device_field[device_temperature];
+    }
+    if (opts->show_fan_stat) {
+      dwin->fan_speed = newwin(1, sizeof_device_field[device_fan_speed], start_row, offset);
+      if (dwin->fan_speed == NULL)
+        goto alloc_error;
+      offset += spacer + sizeof_device_field[device_fan_speed];
+    }
+    if (opts->show_power_stat) {
+      dwin->power_info = newwin(1, sizeof_device_field[device_power], start_row, offset);
+      if (dwin->power_info == NULL)
+        goto alloc_error;
+    }
     meter_row += 1;
   }
 
@@ -254,10 +262,14 @@ static void initialize_gpu_mem_plot(struct plot_window *plot, struct window_posi
                                     nvtop_interface_option *options) {
   unsigned rows = position->sizeY;
   unsigned cols = position->sizeX;
-  cols -= 5;
+  // The left gutter exists only for the percentage axis labels. With the
+  // axis hidden the chart frame hugs the plot area edge-to-edge instead of
+  // leaving a blank 4-column margin.
+  unsigned left = options->show_chart_axis ? 4 : 1;
+  cols -= left + 1;
   rows -= 2;
-  plot->plot_window = newwin(rows, cols, position->posY + 1, position->posX + 4);
-  draw_rectangle(plot->win, 3, 0, cols + 2, rows + 2);
+  plot->plot_window = newwin(rows, cols, position->posY + 1, position->posX + left);
+  draw_rectangle(plot->win, options->show_chart_axis ? 3 : 0, 0, cols + 2, rows + 2);
   // Axis labels are chrome: keep them dim so the trace stands out. They
   // MUST use the exact same data->row mapping as the trace (plot_label_row
   // over the inner window height) plus one row to go from inner to outer
@@ -306,13 +318,36 @@ static void alloc_plot_window(unsigned devices_count, struct window_position *pl
   }
 }
 
-static unsigned device_length(void) {
-  // Outer card width: the info line (5 fields + 4 spacers) plus the two
+static unsigned device_length(const nvtop_interface_option *opts) {
+  // Outer card width: the info line (visible fields + spacers) plus the two
   // frame columns. The GPU name lives in the card title and clips instead
   // of stretching every card.
-  return sizeof_device_field[device_clock] + sizeof_device_field[device_mem_clock] +
-         sizeof_device_field[device_temperature] + sizeof_device_field[device_fan_speed] +
-         sizeof_device_field[device_power] + 4 + 2;
+  unsigned width = 0;
+  unsigned visible = 0;
+  if (opts->show_header_stats) {
+    if (opts->show_gpu_clock_stat) {
+      width += sizeof_device_field[device_clock];
+      visible++;
+    }
+    if (opts->show_mem_clock_stat) {
+      width += sizeof_device_field[device_mem_clock];
+      visible++;
+    }
+    if (opts->show_temp_stat) {
+      width += sizeof_device_field[device_temperature];
+      visible++;
+    }
+    if (opts->show_fan_stat) {
+      width += sizeof_device_field[device_fan_speed];
+      visible++;
+    }
+    if (opts->show_power_stat) {
+      width += sizeof_device_field[device_power];
+      visible++;
+    }
+    width += visible > 0 ? visible - 1 : 0; // one spacer between fields
+  }
+  return width + 2;
 }
 
 static pid_t nvtop_pid;
@@ -336,26 +371,28 @@ static void initialize_all_windows(struct nvtop_interface *dwin) {
     layout_rows = 1;
   compute_sizes_from_layout(devices_count, (dwin->options.has_gpu_info_bar ? 4 : 3) -
                                                 (dwin->options.show_header_stats ? 0 : 1),
-                            device_length(), (unsigned)layout_rows, cols, dwin->options.gpu_specific_opts,
+                            device_length(&dwin->options), (unsigned)layout_rows, cols, dwin->options.gpu_specific_opts,
                             dwin->options.process_fields_displayed, device_positions, &dwin->num_plots,
                             plot_positions, map_device_to_plot, &process_position, &setup_position,
                             dwin->options.hide_processes_list);
 
   alloc_plot_window(devices_count, plot_positions, map_device_to_plot, dwin);
 
-  // The settings gear floats in the screen's top-right corner.
+  // The settings gear floats in the screen's top-right corner and is ALWAYS
+  // visible (ASCII fallback when wide glyphs are unavailable).
   dwin->gear_window = NULL;
   dwin->gear_count = 0;
-  if (interface_unicode && cols >= 70) {
-    dwin->gear_window = newwin(1, 3, 0, cols - 4);
+  if (cols >= 8) {
+    int gear_width = 3;
+    dwin->gear_window = newwin(1, gear_width, 0, cols - gear_width);
     dwin->gear_count = 1;
     dwin->gear_rects[0].y = 0;
-    dwin->gear_rects[0].x0 = cols - 4;
-    dwin->gear_rects[0].x1 = cols - 2;
+    dwin->gear_rects[0].x0 = cols - gear_width;
+    dwin->gear_rects[0].x1 = cols - 1;
   }
   for (unsigned int i = 0; i < devices_count; ++i) {
     alloc_device_window(device_positions[i].posY, device_positions[i].posX, device_positions[i].sizeX,
-                        device_positions[i].sizeY, dwin->options.show_header_stats, &dwin->devices_win[i]);
+                        device_positions[i].sizeY, &dwin->options, &dwin->devices_win[i]);
   }
 
   alloc_process_with_option(dwin, process_position.posX, process_position.posY, process_position.sizeX,
@@ -516,10 +553,10 @@ void clean_ncurses(struct nvtop_interface *interface) {
   free(interface);
 }
 
-// Small breathing room on both sides of the percentage meter bars: one empty
-// column between the label and the bar, and one empty column at the right
-// edge of the meter window. Applied to the unicode and ASCII meter paths.
-#define METER_BAR_PAD 1
+// Compact mode: no breathing room around the percentage meter bars. The
+// bar starts right after the label and runs to the right edge of the meter
+// window. Applied to the unicode and ASCII meter paths.
+#define METER_BAR_PAD 0
 
 // Chrome text (labels, frames, axis): palette gray when available, A_DIM on
 // the default foreground otherwise.
@@ -816,11 +853,14 @@ static void draw_devices(struct list_head *devices, struct nvtop_interface *inte
         gpu_util_win = dev->gpu_util_no_enc_and_dec;
       }
     }
-    // Standalone compact-mode gear in the screen's top-right corner.
+    // Standalone always-visible gear in the screen's top-right corner.
     if (interface->gear_window) {
       werase(interface->gear_window);
       wattr_set(interface->gear_window, A_BOLD, interface_use_color ? cyan_color : 0, NULL);
-      mvwaddstr(interface->gear_window, 0, 0, " \xe2\x9a\x99 "); // ⚙
+      if (interface_unicode)
+        mvwaddstr(interface->gear_window, 0, 0, " \xe2\x9a\x99 "); // ⚙
+      else
+        mvwaddstr(interface->gear_window, 0, 0, "[S]");
       wattr_set(interface->gear_window, A_NORMAL, 0, NULL);
       wnoutrefresh(interface->gear_window);
     }

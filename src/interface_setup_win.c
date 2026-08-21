@@ -63,12 +63,18 @@ enum setup_header_options {
   setup_header_enc_dec_timer,
   setup_header_gpu_info_bar,
   setup_header_show_stats,
+  setup_header_show_gpu_clock,
+  setup_header_show_mem_clock,
+  setup_header_show_temp,
+  setup_header_show_fan,
+  setup_header_show_power,
   setup_header_options_count
 };
 
 static const char *setup_header_option_descriptions[setup_header_options_count] = {
     "Temperature in fahrenheit", "Keep displaying Encoder/Decoder rate (after reaching an idle state)",
-    "Display extra GPU info bar", "Show device statistics (clocks, temp, fan, power)"};
+    "Display extra GPU info bar", "Show device statistics row",
+    "Show GPU clock", "Show memory clock", "Show temperature", "Show fan speed", "Show power"};
 
 // Chart Options
 
@@ -339,6 +345,21 @@ static void draw_setup_window_header(struct nvtop_interface *interface) {
   if (interface->setup_win.indentation_level == 1 &&
       interface->setup_win.options_selected[0] == setup_header_show_stats) {
     mvwchgat(options_win, setup_header_show_stats + 1, 0, 3, A_STANDOUT, cyan_color, NULL);
+  }
+
+  // Per-field statistics toggles
+  const bool stat_flags[5] = {
+      interface->options.show_gpu_clock_stat, interface->options.show_mem_clock_stat,
+      interface->options.show_temp_stat, interface->options.show_fan_stat,
+      interface->options.show_power_stat};
+  for (unsigned f = 0; f < 5; ++f) {
+    unsigned row = setup_header_show_gpu_clock + f;
+    mvwprintw(options_win, row + 1, 0, "[%c]   %s", option_state_char(stat_flags[f]),
+              setup_header_option_descriptions[row]);
+    if (interface->setup_win.indentation_level == 1 &&
+        interface->setup_win.options_selected[0] == row) {
+      mvwchgat(options_win, row + 1, 0, 3, A_STANDOUT, cyan_color, NULL);
+    }
   }
   wnoutrefresh(options_win);
 }
@@ -859,8 +880,47 @@ void handle_setup_win_keypress(int keyId, struct nvtop_interface *interface) {
             interface->options.has_gpu_info_bar = !interface->options.has_gpu_info_bar;
           }
           if (interface->setup_win.options_selected[0] == setup_header_show_stats) {
-            interface->options.show_header_stats = !interface->options.show_header_stats;
+            // Master toggle: flip the whole row on/off together.
+            bool new_state = !interface->options.show_header_stats;
+            interface->options.show_header_stats = new_state;
+            interface->options.show_gpu_clock_stat = new_state;
+            interface->options.show_mem_clock_stat = new_state;
+            interface->options.show_temp_stat = new_state;
+            interface->options.show_fan_stat = new_state;
+            interface->options.show_power_stat = new_state;
             update_window_size_to_terminal_size(interface);
+          }
+          if (interface->setup_win.options_selected[0] >= setup_header_show_gpu_clock &&
+              interface->setup_win.options_selected[0] <= setup_header_show_power) {
+            bool *flag = NULL;
+            switch (interface->setup_win.options_selected[0]) {
+            case setup_header_show_gpu_clock:
+              flag = &interface->options.show_gpu_clock_stat;
+              break;
+            case setup_header_show_mem_clock:
+              flag = &interface->options.show_mem_clock_stat;
+              break;
+            case setup_header_show_temp:
+              flag = &interface->options.show_temp_stat;
+              break;
+            case setup_header_show_fan:
+              flag = &interface->options.show_fan_stat;
+              break;
+            case setup_header_show_power:
+              flag = &interface->options.show_power_stat;
+              break;
+            default:
+              break;
+            }
+            if (flag) {
+              *flag = !*flag;
+              // The row is visible when at least one field is shown.
+              interface->options.show_header_stats =
+                  interface->options.show_gpu_clock_stat || interface->options.show_mem_clock_stat ||
+                  interface->options.show_temp_stat || interface->options.show_fan_stat ||
+                  interface->options.show_power_stat;
+              update_window_size_to_terminal_size(interface);
+            }
           }
         }
       }

@@ -52,7 +52,12 @@ typedef struct nvtop_interface_option_struct {
   bool has_monitored_set_changed;                   // True if the set of monitored gpu was modified through the interface
   bool has_gpu_info_bar;                            // Show info bar with additional GPU parameters
   bool hide_processes_list;                         // Hide processes list
-  bool show_header_stats;                           // Show the clock/temp/fan/power statistics row
+  bool show_header_stats;                           // Show the statistics row (any per-field toggle on)
+  bool show_gpu_clock_stat;                         // Show GPU clock in the statistics row
+  bool show_mem_clock_stat;                         // Show memory clock in the statistics row
+  bool show_temp_stat;                              // Show temperature in the statistics row
+  bool show_fan_stat;                               // Show fan speed in the statistics row
+  bool show_power_stat;                             // Show power in the statistics row
   bool show_chart_legend;                           // Show series legends in the chart border
   bool show_chart_axis;                             // Show the percentage axis next to the charts
   bool show_shortcut_bar;                           // Show the key hints bar at the bottom
