@@ -36,8 +36,14 @@ void nvtop_plot_set_unicode(bool use_unicode);
 // Enable/disable colored plot chrome (dim frame/grid via color pairs).
 void nvtop_plot_set_color(bool use_color);
 
-void nvtop_line_plot(WINDOW *win, size_t num_data, const double *data, unsigned num_plots, bool legend_left,
-                     char legend[MAX_LINES_PER_PLOT][PLOT_MAX_LEGEND_SIZE]);
+// Embed the series legend into the top border row of the plot's outer
+// window (unicode mode). The border starts at border_start_x (the columns
+// left of it hold the axis labels). Redraws the whole border row, so it can
+// be called every refresh.
+void nvtop_plot_draw_legend(WINDOW *border_win, unsigned border_start_x, unsigned num_lines, bool legend_left,
+                            char legend[MAX_LINES_PER_PLOT][PLOT_MAX_LEGEND_SIZE]);
+
+void nvtop_line_plot(WINDOW *win, size_t num_data, const double *data, unsigned num_lines);
 
 void draw_rectangle(WINDOW *win, unsigned startX, unsigned startY, unsigned sizeX, unsigned sizeY);
 

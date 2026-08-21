@@ -51,6 +51,13 @@
 // the locale is UTF-8 and ncurses was built with wide-character support.
 static bool interface_unicode = false;
 static bool interface_use_color = false;
+// True when the terminal palette has the 256-color grays used for chrome.
+static bool interface_ext_colors = false;
+
+// Chrome text (labels, frames, axis): palette gray when available, A_DIM on
+// the default foreground otherwise. Defined next to the meter code.
+static void set_chrome(WINDOW *win, short pair);
+static void unset_chrome(WINDOW *win);
 
 static void nvtop_detect_unicode(void) {
 #ifdef NVTOP_HAVE_WIDE_CURSES
@@ -71,8 +78,8 @@ static void nvtop_detect_unicode(void) {
 }
 
 static unsigned int sizeof_device_field[device_field_count] = {
-    [device_name] = 11,       [device_fan_speed] = 11,   [device_temperature] = 10, [device_power] = 15,
-    [device_clock] = 11,      [device_mem_clock] = 12,   [device_pcie] = 46,        [device_shadercores] = 7,
+    [device_name] = 11,       [device_fan_speed] = 11,   [device_temperature] = 10, [device_power] = 13,
+    [device_clock] = 11,      [device_mem_clock] = 11,   [device_pcie] = 46,        [device_shadercores] = 9,
     [device_l2features] = 11, [device_execengines] = 11,
 };
 
@@ -84,9 +91,23 @@ static unsigned int sizeof_process_field[process_field_count] = {
 };
 
 static void alloc_device_window(unsigned int start_row, unsigned int start_col, unsigned int totalcol,
-                                struct device_window *dwin) {
+                                unsigned int totalrow, bool with_frame, struct device_window *dwin) {
 
   const unsigned int spacer = 1;
+
+  // Card chrome: an open-bottom frame (top border carrying the GPU name,
+  // side rails) painted by draw_devices. The content windows are inset by
+  // one cell below the border and one column inside the rails. Compact
+  // layouts skip the frame entirely and start directly with the fields.
+  dwin->frame_win = NULL;
+  if (with_frame) {
+    dwin->frame_win = newwin(totalrow, totalcol, start_row, start_col);
+    if (dwin->frame_win == NULL)
+      goto alloc_error;
+    start_row += 1;
+    start_col += 1;
+    totalcol -= 2;
+  }
 
   // Line 1 = GPU clk | MEM clk | Temp | Fan | Power
   dwin->gpu_clock_info = newwin(1, sizeof_device_field[device_clock], start_row, start_col);
@@ -180,6 +201,7 @@ alloc_error:
 }
 
 static void free_device_windows(struct device_window *dwin) {
+  delwin(dwin->frame_win);
   delwin(dwin->gpu_util_enc_dec);
   delwin(dwin->gpu_util_no_enc_or_dec);
   delwin(dwin->gpu_util_no_enc_and_dec);
@@ -199,7 +221,19 @@ static void free_device_windows(struct device_window *dwin) {
 
 static void alloc_process_with_option(struct nvtop_interface *interface, unsigned posX, unsigned posY, unsigned sizeX,
                                       unsigned sizeY) {
+  interface->process.frame_win = NULL;
   if (sizeY > 0) {
+    if (interface_unicode && sizeY >= 6 && sizeX > option_window_size + 2) {
+      // Card frame around the list; the header row lives inside it.
+      interface->process.frame_win = newwin(sizeY, sizeX, posY, posX);
+      draw_rectangle(interface->process.frame_win, 0, 0, sizeX, sizeY);
+      mvwprintw(interface->process.frame_win, 0, 2, " Processes ");
+      wnoutrefresh(interface->process.frame_win);
+      posY += 1;
+      posX += 1;
+      sizeX -= 2;
+      sizeY -= 2;
+    }
     interface->process.process_win = newwin(sizeY, sizeX, posY, posX);
     interface->process.process_with_option_win =
         newwin(sizeY, sizeX - option_window_size, posY, posX + option_window_size);
@@ -230,30 +264,28 @@ static void initialize_gpu_mem_plot(struct plot_window *plot, struct window_posi
   rows -= 2;
   plot->plot_window = newwin(rows, cols, position->posY + 1, position->posX + 4);
   draw_rectangle(plot->win, 3, 0, cols + 2, rows + 2);
-  // Axis labels are chrome: keep them dim so the trace stands out.
-  if (interface_use_color)
-    wcolor_set(plot->win, dim_color, NULL);
-  else
-    wattron(plot->win, A_DIM);
-  // The trace maps data -> row with data_level(rows-1, ...) (nvtop_line_plot
-  // decrements the window height by one), so the labels must use the exact
-  // same mapping via plot_label_row() plus one to go from inner to outer
-  // window coordinates. Hard-coded linear rows drift by a row at some
-  // terminal heights and no longer sit on the grid/trace.
-  mvwprintw(plot->win, plot_label_row(rows - 1, 25) + 1, 0, " 25");
-  mvwprintw(plot->win, plot_label_row(rows - 1, 75) + 1, 0, " 75");
-  mvwprintw(plot->win, plot_label_row(rows - 1, 50) + 1, 0, " 50");
-  mvwprintw(plot->win, plot_label_row(rows - 1, 100) + 1, 0, "100");
-  mvwprintw(plot->win, plot_label_row(rows - 1, 0) + 1, 0, "  0");
-  plot->data = calloc(cols, sizeof(*plot->data));
+  // Axis labels are chrome: keep them dim so the trace stands out. They
+  // MUST use the exact same data->row mapping as the trace (plot_label_row
+  // over the inner window height) plus one row to go from inner to outer
+  // window coordinates. At very small heights two levels can share a row —
+  // the later (lower) label wins and the earlier one is skipped instead of
+  // overprinting it.
+  int last_label_row = -1;
+  static const unsigned label_levels[5] = {100, 75, 50, 25, 0};
+  for (unsigned lvl = 0; lvl < ARRAY_SIZE(label_levels); ++lvl) {
+    int r = plot_label_row(rows, label_levels[lvl]);
+    if (r == last_label_row)
+      continue;
+    last_label_row = r;
+    char text[5];
+    snprintf(text, sizeof(text), "%3u", label_levels[lvl]);
+    mvwprintw(plot->win, r + 1, 0, "%s", text);
+  }
+  plot->data = calloc((size_t)cols * MAX_LINES_PER_PLOT, sizeof(*plot->data));
   plot->num_data = cols;
   (void)options;
 
-  // End of the dimmed axis labels
-  if (!interface_use_color)
-    wattroff(plot->win, A_DIM);
-  else
-    wcolor_set(plot->win, 0, NULL);
+  unset_chrome(plot->win);
   wnoutrefresh(plot->win);
 }
 
@@ -279,10 +311,12 @@ static void alloc_plot_window(unsigned devices_count, struct window_position *pl
 }
 
 static unsigned device_length(void) {
-  return max(sizeof_device_field[device_name] + sizeof_device_field[device_pcie] + 1,
-             sizeof_device_field[device_clock] + sizeof_device_field[device_mem_clock] +
-                 sizeof_device_field[device_temperature] + sizeof_device_field[device_fan_speed] +
-                 sizeof_device_field[device_power] + 5);
+  // Outer card width: the info line (5 fields + 4 spacers) plus the two
+  // frame columns. The GPU name lives in the card title and clips instead
+  // of stretching every card.
+  return sizeof_device_field[device_clock] + sizeof_device_field[device_mem_clock] +
+         sizeof_device_field[device_temperature] + sizeof_device_field[device_fan_speed] +
+         sizeof_device_field[device_power] + 4 + 2;
 }
 
 static pid_t nvtop_pid;
@@ -303,7 +337,8 @@ static void initialize_all_windows(struct nvtop_interface *dwin) {
   int layout_rows = rows - 1;
   if (layout_rows < 1)
     layout_rows = 1;
-  compute_sizes_from_layout(devices_count, dwin->options.has_gpu_info_bar ? 4 : 3, device_length(),
+  compute_sizes_from_layout(devices_count,
+                            (dwin->options.has_gpu_info_bar ? 4 : 3) + (layout_rows < 14 ? 0 : 1), device_length(),
                             (unsigned)layout_rows, cols, dwin->options.gpu_specific_opts,
                             dwin->options.process_fields_displayed, device_positions, &dwin->num_plots,
                             plot_positions, map_device_to_plot, &process_position, &setup_position,
@@ -311,9 +346,10 @@ static void initialize_all_windows(struct nvtop_interface *dwin) {
 
   alloc_plot_window(devices_count, plot_positions, map_device_to_plot, dwin);
 
+  bool compact_header = layout_rows < 14;
   for (unsigned int i = 0; i < devices_count; ++i) {
     alloc_device_window(device_positions[i].posY, device_positions[i].posX, device_positions[i].sizeX,
-                        &dwin->devices_win[i]);
+                        device_positions[i].sizeY, !compact_header, &dwin->devices_win[i]);
   }
 
   alloc_process_with_option(dwin, process_position.posX, process_position.posY, process_position.sizeX,
@@ -333,6 +369,8 @@ static void delete_all_windows(struct nvtop_interface *dwin) {
   delwin(dwin->process.process_with_option_win);
   dwin->process.process_win = NULL;
   dwin->process.process_with_option_win = NULL;
+  delwin(dwin->process.frame_win);
+  dwin->process.frame_win = NULL;
   delwin(dwin->shortcut_window);
   delwin(dwin->process.option_window.option_win);
   for (size_t i = 0; i < dwin->num_plots; ++i) {
@@ -358,14 +396,21 @@ static void initialize_colors(const unsigned char plot_color_idx[MAX_LINES_PER_P
 #else
   background_color = COLOR_BLACK;
 #endif
+  interface_ext_colors = COLORS >= 256;
   init_pair(cyan_color, COLOR_CYAN, background_color);
   init_pair(red_color, COLOR_RED, background_color);
   init_pair(green_color, COLOR_GREEN, background_color);
   init_pair(yellow_color, COLOR_YELLOW, background_color);
   init_pair(blue_color, COLOR_BLUE, background_color);
   init_pair(magenta_color, COLOR_MAGENTA, background_color);
-  init_pair(dim_color, COLOR_WHITE, background_color);
-  init_pair(grid_color, COLOR_WHITE, background_color);
+  // Chrome grays (dim text, frames, grid, meter tracks): palette grays on
+  // 256-color terminals, plain white (paired with A_DIM at use sites)
+  // otherwise.
+  init_pair(dim_color, interface_ext_colors ? 244 : COLOR_WHITE, background_color);
+  init_pair(grid_color, interface_ext_colors ? 238 : COLOR_WHITE, background_color);
+  init_pair(frame_color, interface_ext_colors ? 239 : COLOR_WHITE, background_color);
+  init_pair(label_color, interface_ext_colors ? 243 : COLOR_WHITE, background_color);
+  init_pair(track_color, interface_ext_colors ? 236 : COLOR_WHITE, background_color);
   init_pair(value_on_green_color, COLOR_BLACK, COLOR_GREEN);
   init_pair(value_on_yellow_color, COLOR_BLACK, COLOR_YELLOW);
   init_pair(value_on_red_color, COLOR_BLACK, COLOR_RED);
@@ -374,6 +419,31 @@ static void initialize_colors(const unsigned char plot_color_idx[MAX_LINES_PER_P
       gpu_util_plot_color, gpu_mem_plot_color, gpu_plot_color_3, gpu_plot_color_4};
   for (unsigned s = 0; s < MAX_LINES_PER_PLOT; ++s)
     init_pair(gpu_plot_pairs[s], plot_terminal_colors[plot_color_idx[s]], background_color);
+  // Chart fill gradient: the edge cells paint the series color as the
+  // background, fading through a mid shade into a dark body shade. Solid
+  // background cells keep the fill seamless in every terminal. Below 256
+  // colors mid/body degrade to the series color (the ASCII renderer then
+  // falls back to dimmed block glyphs anyway).
+  static const short plot_mid_variants[7] = {88, 30, 28, 100, 19, 90, 238};
+  static const short plot_body_variants[7] = {52, 23, 22, 58, 17, 54, 236};
+  static const short gpu_plot_fill_pairs[MAX_LINES_PER_PLOT] = {
+      gpu_util_plot_fill_color, gpu_mem_plot_fill_color, gpu_plot_fill_color_3, gpu_plot_fill_color_4};
+  static const short gpu_plot_mid_pairs[MAX_LINES_PER_PLOT] = {
+      gpu_util_plot_mid_color, gpu_mem_plot_mid_color, gpu_plot_mid_color_3, gpu_plot_mid_color_4};
+  static const short gpu_plot_body_pairs[MAX_LINES_PER_PLOT] = {
+      gpu_util_plot_body_color, gpu_mem_plot_body_color, gpu_plot_body_color_3, gpu_plot_body_color_4};
+  static const short gpu_plot_mid_fg_pairs[MAX_LINES_PER_PLOT] = {
+      gpu_util_plot_mid_fg_color, gpu_mem_plot_mid_fg_color, gpu_plot_mid_fg_color_3, gpu_plot_mid_fg_color_4};
+  for (unsigned s = 0; s < MAX_LINES_PER_PLOT; ++s) {
+    short idx = plot_color_idx[s];
+    init_pair(gpu_plot_fill_pairs[s], background_color, plot_terminal_colors[idx]);
+    init_pair(gpu_plot_mid_pairs[s], background_color,
+              interface_ext_colors ? plot_mid_variants[idx] : plot_terminal_colors[idx]);
+    init_pair(gpu_plot_body_pairs[s], background_color,
+              interface_ext_colors ? plot_body_variants[idx] : plot_terminal_colors[idx]);
+    init_pair(gpu_plot_mid_fg_pairs[s],
+              interface_ext_colors ? plot_mid_variants[idx] : plot_terminal_colors[idx], background_color);
+  }
 }
 
 struct nvtop_interface *initialize_curses(unsigned total_devices, unsigned devices_count, unsigned largest_device_name,
@@ -443,9 +513,24 @@ void clean_ncurses(struct nvtop_interface *interface) {
 // edge of the meter window. Applied to the unicode and ASCII meter paths.
 #define METER_BAR_PAD 1
 
+// Chrome text (labels, frames, axis): palette gray when available, A_DIM on
+// the default foreground otherwise.
+static void set_chrome(WINDOW *win, short pair) {
+  if (interface_use_color)
+    wattr_set(win, interface_ext_colors ? A_NORMAL : A_DIM, pair, NULL);
+  else
+    wattron(win, A_DIM);
+}
+
+static void unset_chrome(WINDOW *win) {
+  if (interface_use_color)
+    wattr_set(win, A_NORMAL, 0, NULL);
+  else
+    wattroff(win, A_DIM);
+}
 // Eighth-block glyphs for sub-cell meter resolution: 1/8 .. 8/8
 static const char *const meter_blocks[9] = {
-    " ",           // 0/8
+    " ",            // 0/8
     "\xe2\x96\x8f", // ▏
     "\xe2\x96\x8e", // ▎
     "\xe2\x96\x8d", // ▍
@@ -466,11 +551,11 @@ static short meter_fill_pair(unsigned percentage) {
   return green_color;
 }
 
-// Overlay the meter value right-aligned on top of the bar: black text on a
-// contrasting badge everywhere it is drawn — the fill color where it sits on
-// the colored fill, white where it sits on the empty portion — so the value
-// always reads as an overlay on the bar. yellow_cells marks a leading yellow
-// segment (effective load). Right-aligned inside the padded bar area.
+// Overlay the meter value right-aligned on top of the bar. Where the value
+// sits on the colored fill it is drawn black-on-color (a badge); on the dim
+// track it is bold in the default foreground, so an idle meter carries no
+// bright patch. yellow_cells marks a leading yellow segment (effective
+// load). Right-aligned inside the padded bar area.
 static void overlay_meter_value(WINDOW *win, int cols, int bar_start, unsigned percentage, int fill_cells,
                                 int yellow_cells, const char *value) {
   int value_len = (int)strlen(value);
@@ -493,15 +578,16 @@ static void overlay_meter_value(WINDOW *win, int cols, int bar_start, unsigned p
       break;
     int bar_cell = c - bar_start;
     short pair = 0;
+    attr_t attr = A_BOLD;
     if (interface_use_color && bar_cell >= 0) {
       if (bar_cell < yellow_cells)
         pair = value_on_yellow_color;
       else if (bar_cell < fill_cells)
         pair = on_fill_pair;
       else
-        pair = value_on_empty_color;
+        attr = A_BOLD; // on the track: bold default text, no badge
     }
-    wattr_set(win, A_BOLD, pair, NULL);
+    wattr_set(win, attr, pair, NULL);
     mvwaddch(win, 0, c, (chtype)(unsigned char)value[j]);
   }
   wstandend(win);
@@ -517,13 +603,9 @@ static void draw_percentage_meter(WINDOW *win, const char *prelude, unsigned int
   wclrtoeol(win);
 
   // Label (dimmed so the bar and value stand out)
-  if (interface_use_color)
-    wcolor_set(win, dim_color, NULL);
-  else
-    wattron(win, A_DIM);
+  set_chrome(win, label_color);
   wprintw(win, "%s", prelude);
-  if (!interface_use_color)
-    wattroff(win, A_DIM);
+  unset_chrome(win);
   int bar_start = getcurx(win) + METER_BAR_PAD;
   int bar_cols = cols - bar_start - METER_BAR_PAD;
   if (bar_cols < 1)
@@ -552,14 +634,10 @@ static void draw_percentage_meter(WINDOW *win, const char *prelude, unsigned int
         waddstr(win, meter_blocks[frac]);
         empty_start = full + 1;
       }
-      if (interface_use_color)
-        wcolor_set(win, dim_color, NULL);
-      else
-        wattron(win, A_DIM);
+      set_chrome(win, track_color);
       for (int i = empty_start; i < bar_cols; ++i)
         waddstr(win, "\xe2\x96\x91"); // ░
-      if (!interface_use_color)
-        wattroff(win, A_DIM);
+      unset_chrome(win);
     }
     // Value overlaid, right-aligned on the bar
     wstandend(win);
@@ -594,13 +672,10 @@ static void draw_temp_color(WINDOW *win, unsigned int temp, unsigned int temp_sl
     temp_convert = temp;
   else
     temp_convert = (unsigned)(32 + nearbyint(temp * 1.8));
-  if (interface_use_color)
-    wcolor_set(win, dim_color, NULL);
-  else
-    wattron(win, A_DIM);
-  mvwprintw(win, 0, 0, "TEMP");
-  if (!interface_use_color)
-    wattroff(win, A_DIM);
+  werase(win);
+  set_chrome(win, label_color);
+  wprintw(win, "TEMP");
+  unset_chrome(win);
 
   if (temp >= temp_slowdown - 5) {
     if (temp >= temp_slowdown)
@@ -731,6 +806,64 @@ static void draw_devices(struct list_head *devices, struct nvtop_interface *inte
         gpu_util_win = dev->gpu_util_no_enc_and_dec;
       }
     }
+    // Card chrome: open-bottom frame — the top border carries the GPU
+    // identity and side rails run down past the last field row, where the
+    // plot frame below closes the shape. Refreshed before the fields so
+    // they composite above it.
+    if (dev->frame_win) {
+      int frows, fcols;
+      getmaxyx(dev->frame_win, frows, fcols);
+      werase(dev->frame_win);
+      if (interface_unicode) {
+        mvwaddstr(dev->frame_win, 0, 0, "\xe2\x95\xad");                         // ╭
+        for (int x = 1; x < fcols - 1; ++x)
+          mvwaddstr(dev->frame_win, 0, x, "\xe2\x94\x80");                       // ─
+        mvwaddstr(dev->frame_win, 0, fcols - 1, "\xe2\x95\xae");                 // ╮
+        for (int y = 1; y < frows; ++y) {
+          mvwaddstr(dev->frame_win, y, 0, "\xe2\x94\x82");                       // │
+          mvwaddstr(dev->frame_win, y, fcols - 1, "\xe2\x94\x82");               // │
+        }
+      } else {
+        mvwaddch(dev->frame_win, 0, 0, ACS_ULCORNER);
+        mvwhline(dev->frame_win, 0, 1, 0, fcols - 2);
+        mvwaddch(dev->frame_win, 0, fcols - 1, ACS_URCORNER);
+        for (int y = 1; y < frows; ++y) {
+          mvwaddch(dev->frame_win, y, 0, ACS_VLINE);
+          mvwaddch(dev->frame_win, y, fcols - 1, ACS_VLINE);
+        }
+      }
+      char id[16];
+      snprintf(id, sizeof(id), "GPU %u", dev_id);
+      const char *name = NULL;
+      if (GPUINFO_STATIC_FIELD_VALID(&device->static_info, device_name))
+        name = device->static_info.device_name;
+      const char *sep = interface_unicode ? " \xe2\x94\x80 " : " - "; // ─
+      int id_len = (int)strlen(id);
+      const int sep_cols = 3; // display columns of sep
+      int pos = 2;
+      if (fcols >= 2 * sep_cols + id_len + 4) {
+        mvwaddch(dev->frame_win, 0, pos++, ' ');
+        wattr_set(dev->frame_win, A_BOLD, interface_use_color ? cyan_color : 0, NULL);
+        mvwprintw(dev->frame_win, 0, pos, "%s", id);
+        pos += id_len;
+        wattr_set(dev->frame_win, A_NORMAL, 0, NULL);
+        if (name && name[0]) {
+          int budget = fcols - 1 /*╮*/ - pos - sep_cols - 1 /*trailing space*/;
+          if (budget > 0) {
+            int name_len = (int)strlen(name);
+            if (name_len > budget)
+              name_len = budget;
+            mvwaddstr(dev->frame_win, 0, pos, sep);
+            pos += sep_cols;
+            mvwprintw(dev->frame_win, 0, pos, "%.*s", name_len, name);
+            pos += name_len;
+            mvwaddch(dev->frame_win, 0, pos, ' ');
+          }
+        }
+      }
+      wnoutrefresh(dev->frame_win);
+    }
+
     char buff[1024];
     if (display_encode) {
       unsigned rate =
@@ -795,7 +928,10 @@ static void draw_devices(struct list_head *devices, struct nvtop_interface *inte
                       device->static_info.temperature_slowdown_threshold,
                       !interface->options.temperature_in_fahrenheit);
     } else {
-      mvwprintw(dev->temperature, 0, 0, "TEMP N/A");
+      werase(dev->temperature);
+      set_chrome(dev->temperature, label_color);
+      wprintw(dev->temperature, "TEMP N/A");
+      unset_chrome(dev->temperature);
       if (interface_unicode)
         waddstr(dev->temperature, "\xc2\xb0"); // °
       else
@@ -804,76 +940,88 @@ static void draw_devices(struct list_head *devices, struct nvtop_interface *inte
         waddch(dev->temperature, 'F');
       else
         waddch(dev->temperature, 'C');
-      mvwchgat(dev->temperature, 0, 0, 4, A_DIM, interface_use_color ? dim_color : 0, NULL);
       wnoutrefresh(dev->temperature);
     }
 
     // FAN
+    werase(dev->fan_speed);
+    set_chrome(dev->fan_speed, label_color);
+    wprintw(dev->fan_speed, "FAN ");
+    unset_chrome(dev->fan_speed);
     if (GPUINFO_DYNAMIC_FIELD_VALID(&device->dynamic_info, fan_speed)) {
-      mvwprintw(dev->fan_speed, 0, 0, " FAN %3u%%  ",
-                device->dynamic_info.fan_speed > 100 ? 100 : device->dynamic_info.fan_speed);
-      mvwchgat(dev->fan_speed, 0, 1, 3, A_DIM, interface_use_color ? dim_color : 0, NULL);
-      mvwchgat(dev->fan_speed, 0, 5, 3, A_BOLD, interface_use_color ? 0 : 0, NULL);
+      wattron(dev->fan_speed, A_BOLD);
+      wprintw(dev->fan_speed, "%3u%%",
+              device->dynamic_info.fan_speed > 100 ? 100 : device->dynamic_info.fan_speed);
+      wattroff(dev->fan_speed, A_BOLD);
     } else if (device->static_info.integrated_graphics) {
-      mvwprintw(dev->fan_speed, 0, 0, "  CPU-FAN  ");
-      mvwchgat(dev->fan_speed, 0, 2, 7, A_DIM, interface_use_color ? dim_color : 0, NULL);
+      wprintw(dev->fan_speed, "CPU");
     } else if (GPUINFO_DYNAMIC_FIELD_VALID(&device->dynamic_info, fan_rpm)) {
-      mvwprintw(dev->fan_speed, 0, 0, "FAN %4uRPM",
-                device->dynamic_info.fan_rpm > 9999 ? 9999 : device->dynamic_info.fan_rpm);
-      mvwchgat(dev->fan_speed, 0, 0, 3, A_DIM, interface_use_color ? dim_color : 0, NULL);
+      wprintw(dev->fan_speed, "%4uRPM",
+              device->dynamic_info.fan_rpm > 9999 ? 9999 : device->dynamic_info.fan_rpm);
     } else {
-      mvwprintw(dev->fan_speed, 0, 0, "  FAN N/A  ");
-      mvwchgat(dev->fan_speed, 0, 2, 3, A_DIM, interface_use_color ? dim_color : 0, NULL);
+      wprintw(dev->fan_speed, "N/A");
     }
     wnoutrefresh(dev->fan_speed);
 
     // GPU CLOCK
     werase(dev->gpu_clock_info);
+    set_chrome(dev->gpu_clock_info, label_color);
+    wprintw(dev->gpu_clock_info, "GPU ");
+    unset_chrome(dev->gpu_clock_info);
     if (GPUINFO_DYNAMIC_FIELD_VALID(&device->dynamic_info, gpu_clock_speed))
-      mvwprintw(dev->gpu_clock_info, 0, 0, "GPU %uMHz", device->dynamic_info.gpu_clock_speed);
+      wprintw(dev->gpu_clock_info, "%uMHz", device->dynamic_info.gpu_clock_speed);
     else
-      mvwprintw(dev->gpu_clock_info, 0, 0, "GPU N/A MHz");
-
-    mvwchgat(dev->gpu_clock_info, 0, 0, 3, A_DIM, interface_use_color ? dim_color : 0, NULL);
+      wprintw(dev->gpu_clock_info, "N/A");
     wnoutrefresh(dev->gpu_clock_info);
 
     // MEM CLOCK
     werase(dev->mem_clock_info);
+    set_chrome(dev->mem_clock_info, label_color);
+    wprintw(dev->mem_clock_info, "MEM ");
+    unset_chrome(dev->mem_clock_info);
     if (GPUINFO_DYNAMIC_FIELD_VALID(&device->dynamic_info, mem_clock_speed))
-      mvwprintw(dev->mem_clock_info, 0, 0, "MEM %uMHz", device->dynamic_info.mem_clock_speed);
+      wprintw(dev->mem_clock_info, "%uMHz", device->dynamic_info.mem_clock_speed);
     else
-      mvwprintw(dev->mem_clock_info, 0, 0, "MEM N/A MHz");
-    mvwchgat(dev->mem_clock_info, 0, 0, 3, A_DIM, interface_use_color ? dim_color : 0, NULL);
+      wprintw(dev->mem_clock_info, "N/A");
     wnoutrefresh(dev->mem_clock_info);
 
-    // POWER
+    // POWER — the live draw is bold and colored by headroom, the max stays
+    // a plain reference.
     werase(dev->power_info);
+    set_chrome(dev->power_info, label_color);
+    wprintw(dev->power_info, "POW ");
+    unset_chrome(dev->power_info);
     if (GPUINFO_DYNAMIC_FIELD_VALID(&device->dynamic_info, power_draw) &&
-        GPUINFO_DYNAMIC_FIELD_VALID(&device->dynamic_info, power_draw_max))
-      mvwprintw(dev->power_info, 0, 0, "POW %3u / %3u W", device->dynamic_info.power_draw / 1000,
-                device->dynamic_info.power_draw_max / 1000);
-    else if (GPUINFO_DYNAMIC_FIELD_VALID(&device->dynamic_info, power_draw) &&
-             !GPUINFO_DYNAMIC_FIELD_VALID(&device->dynamic_info, power_draw_max))
-      mvwprintw(dev->power_info, 0, 0, "POW %3u W", device->dynamic_info.power_draw / 1000);
-    else if (!GPUINFO_DYNAMIC_FIELD_VALID(&device->dynamic_info, power_draw) &&
-             GPUINFO_DYNAMIC_FIELD_VALID(&device->dynamic_info, power_draw_max))
-      mvwprintw(dev->power_info, 0, 0, "POW N/A / %3u W", device->dynamic_info.power_draw_max / 1000);
-    else
-      mvwprintw(dev->power_info, 0, 0, "POW N/A W");
-    mvwchgat(dev->power_info, 0, 0, 3, A_DIM, interface_use_color ? dim_color : 0, NULL);
+        GPUINFO_DYNAMIC_FIELD_VALID(&device->dynamic_info, power_draw_max)) {
+      wattron(dev->power_info, A_BOLD);
+      wprintw(dev->power_info, "%3u", device->dynamic_info.power_draw / 1000);
+      wattroff(dev->power_info, A_BOLD);
+      set_chrome(dev->power_info, label_color);
+      wprintw(dev->power_info, "/");
+      unset_chrome(dev->power_info);
+      wprintw(dev->power_info, "%3uW", device->dynamic_info.power_draw_max / 1000);
+      unsigned ratio = device->dynamic_info.power_draw_max > 0
+                           ? device->dynamic_info.power_draw * 100 / device->dynamic_info.power_draw_max
+                           : 0;
+      short pair = ratio >= 85 ? red_color : (ratio >= 60 ? yellow_color : green_color);
+      mvwchgat(dev->power_info, 0, 4, 3, A_BOLD, interface_use_color ? pair : 0, NULL);
+    } else if (GPUINFO_DYNAMIC_FIELD_VALID(&device->dynamic_info, power_draw)) {
+      wattron(dev->power_info, A_BOLD);
+      wprintw(dev->power_info, "%3uW", device->dynamic_info.power_draw / 1000);
+      wattroff(dev->power_info, A_BOLD);
+    } else if (GPUINFO_DYNAMIC_FIELD_VALID(&device->dynamic_info, power_draw_max)) {
+      wprintw(dev->power_info, "N/A/%3uW", device->dynamic_info.power_draw_max / 1000);
+    } else {
+      wprintw(dev->power_info, "N/A");
+    }
     wnoutrefresh(dev->power_info);
 
     if (interface->options.has_gpu_info_bar) {
       // Number of shader cores
       werase(dev->shader_cores);
-      if (interface_use_color)
-        wcolor_set(dev->shader_cores, dim_color, NULL);
-      else
-        wattron(dev->shader_cores, A_DIM);
+      set_chrome(dev->shader_cores, label_color);
       mvwprintw(dev->shader_cores, 0, 0, "NSHC ");
-      if (!interface_use_color)
-        wattroff(dev->shader_cores, A_DIM);
-      wstandend(dev->shader_cores);
+      unset_chrome(dev->shader_cores);
       if (GPUINFO_STATIC_FIELD_VALID(&device->static_info, n_shared_cores))
         wprintw(dev->shader_cores, "%u", device->static_info.n_shared_cores);
       else
@@ -883,14 +1031,9 @@ static void draw_devices(struct list_head *devices, struct nvtop_interface *inte
 
       // L2 cache information
       werase(dev->l2_cache_size);
-      if (interface_use_color)
-        wcolor_set(dev->l2_cache_size, dim_color, NULL);
-      else
-        wattron(dev->l2_cache_size, A_DIM);
+      set_chrome(dev->l2_cache_size, label_color);
       mvwprintw(dev->l2_cache_size, 0, 0, "L2CF ");
-      if (!interface_use_color)
-        wattroff(dev->l2_cache_size, A_DIM);
-      wstandend(dev->l2_cache_size);
+      unset_chrome(dev->l2_cache_size);
       if (GPUINFO_STATIC_FIELD_VALID(&device->static_info, l2cache_size))
         wprintw(dev->l2_cache_size, "%u", device->static_info.l2cache_size);
       else
@@ -900,14 +1043,9 @@ static void draw_devices(struct list_head *devices, struct nvtop_interface *inte
 
       // Number of execution engines
       werase(dev->exec_engines);
-      if (interface_use_color)
-        wcolor_set(dev->exec_engines, dim_color, NULL);
-      else
-        wattron(dev->exec_engines, A_DIM);
+      set_chrome(dev->exec_engines, label_color);
       mvwprintw(dev->exec_engines, 0, 0, "NEXC ");
-      if (!interface_use_color)
-        wattroff(dev->exec_engines, A_DIM);
-      wstandend(dev->exec_engines);
+      unset_chrome(dev->exec_engines);
       if (GPUINFO_STATIC_FIELD_VALID(&device->static_info, n_exec_engines))
         wprintw(dev->exec_engines, "%u", device->static_info.n_exec_engines);
       else
@@ -1216,7 +1354,8 @@ static void update_selected_offset_with_window_size(unsigned int *selected_row, 
 static char process_print_buffer[process_buffer_line_size];
 
 static void print_processes_on_screen(all_processes all_procs, struct process_window *process,
-                                      enum process_field sort_criterion, process_field_displayed fields_to_display) {
+                                      enum process_field sort_criterion, process_field_displayed fields_to_display,
+                                      bool sort_descending) {
   WINDOW *win = process->option_window.state == nvtop_option_state_hidden ? process->process_win
                                                                           : process->process_with_option_win;
   struct gpuid_and_process *processes = all_procs.processes;
@@ -1242,22 +1381,49 @@ static void print_processes_on_screen(all_processes all_procs, struct process_wi
 
   int printed = 0;
   int column_sort_start = 0, column_sort_end = sizeof_process_field[0];
+  const char *sort_arrow =
+      interface_unicode ? (sort_descending ? "\xe2\x96\xbc" : "\xe2\x96\xb2") : (sort_descending ? "v" : "^");
+  int sort_arrow_col = -1;
   for (enum process_field i = process_pid; i < process_field_count; ++i) {
     if (i == sort_criterion) {
       column_sort_start = printed;
       column_sort_end =
           i == process_command ? process_buffer_line_size - 4 : column_sort_start + sizeof_process_field[i];
     }
-    if (process_is_field_displayed(i, fields_to_display))
+    if (!process_is_field_displayed(i, fields_to_display))
+      continue;
+    if (i == sort_criterion && i != process_command) {
+      // Sort direction indicator glued to the sorted column name, kept
+      // inside the field width so data columns stay aligned.
+      char with_arrow[64];
+      int width = sizeof_process_field[i];
+      int name_len = (int)strlen(columnName[i]);
+      int arrow_len = (int)strlen(sort_arrow);
+      if (name_len + 1 + arrow_len <= width) {
+        snprintf(with_arrow, sizeof(with_arrow), "%s %s", columnName[i], sort_arrow);
+        sort_arrow_col = printed + name_len + 1;
+      } else if (name_len + arrow_len <= width) {
+        snprintf(with_arrow, sizeof(with_arrow), "%s%s", columnName[i], sort_arrow);
+        sort_arrow_col = printed + name_len;
+      } else {
+        snprintf(with_arrow, sizeof(with_arrow), "%s", columnName[i]);
+      }
+      printed += snprintf(&process_print_buffer[printed], process_buffer_line_size - printed, "%*s ", width,
+                          with_arrow);
+    } else {
       printed += snprintf(&process_print_buffer[printed], process_buffer_line_size - printed, "%*s ",
                           sizeof_process_field[i], columnName[i]);
+    }
   }
 
   mvwprintw(win, 0, 0, "%.*s", cols, &process_print_buffer[process->offset_column]);
   wclrtoeol(win);
-  mvwchgat(win, 0, 0, -1, A_STANDOUT, green_color, NULL);
-  set_attribute_between(win, 0, column_sort_start - (int)process->offset_column,
-                        column_sort_end - (int)process->offset_column, A_STANDOUT, cyan_color);
+  // Quiet header: bold gray titles, bright arrow on the sorted column.
+  mvwchgat(win, 0, 0, -1, A_BOLD, interface_use_color ? label_color : 0, NULL);
+  if (sort_arrow_col >= 0)
+    set_attribute_between(win, 0, sort_arrow_col - (int)process->offset_column,
+                          sort_arrow_col + (int)strlen(sort_arrow) - (int)process->offset_column, A_BOLD,
+                          cyan_color);
 
   int start_col_process_type = 0;
   for (enum process_field i = process_pid; i < process_type; ++i) {
@@ -1423,6 +1589,11 @@ static void print_processes_on_screen(all_processes all_procs, struct process_wi
     }
   }
   printed_last_call = last_line_printed;
+  if (all_procs.processes_count == 0) {
+    set_chrome(win, label_color);
+    mvwprintw(win, 1, 1, "No GPU processes");
+    unset_chrome(win);
+  }
   wnoutrefresh(win);
 }
 
@@ -1489,7 +1660,7 @@ static void draw_processes(struct list_head *devices, struct nvtop_interface *in
   }
 
   print_processes_on_screen(all_procs, &interface->process, interface->options.sort_processes_by,
-                            interface->options.process_fields_displayed);
+                            interface->options.process_fields_displayed, interface->options.sort_descending_order);
 }
 
 static const char *signalNames[] = {
@@ -1645,8 +1816,19 @@ static const char *option_selection_kill[][2] = {
     {"ESC", "Cancel"},
 };
 
-// One shortcut entry: bold cyan key, then dim label, separated by a space.
+// One shortcut entry: bold cyan key, then dim label. Entries are separated
+// by a dim middot; the sequence restarts on every full bar redraw.
+static bool shortcut_bar_first_entry = true;
 void nvtop_print_shortcut(WINDOW *win, const char *key, const char *label) {
+  if (!shortcut_bar_first_entry) {
+    if (interface_use_color)
+      wcolor_set(win, track_color, NULL);
+    else
+      wattron(win, A_DIM);
+    waddstr(win, " \xc2\xb7 "); // ·
+    wstandend(win);
+  }
+  shortcut_bar_first_entry = false;
   if (interface_use_color)
     wcolor_set(win, cyan_color, NULL);
   wattron(win, A_BOLD);
@@ -1662,7 +1844,6 @@ void nvtop_print_shortcut(WINDOW *win, const char *key, const char *label) {
   if (!interface_use_color)
     wattroff(win, A_DIM);
   wstandend(win);
-  waddstr(win, "   ");
 }
 
 static void draw_process_shortcuts(struct nvtop_interface *interface) {
@@ -1702,6 +1883,7 @@ static void draw_process_shortcuts(struct nvtop_interface *interface) {
 }
 
 static void draw_shortcuts(struct nvtop_interface *interface) {
+  shortcut_bar_first_entry = true;
   if (interface->setup_win.visible) {
     draw_setup_window_shortcuts(interface);
   } else {
@@ -1795,7 +1977,6 @@ static unsigned populate_plot_data_from_ring_buffer(const struct nvtop_interface
                                                     double data[size_data_buff],
                                                     char plot_legend[MAX_LINES_PER_PLOT][PLOT_MAX_LEGEND_SIZE]) {
 
-  memset(data, 0, size_data_buff * sizeof(*data));
   unsigned total_to_draw = 0;
   for (unsigned i = 0; i < plot_win->num_devices_to_plot; ++i) {
     unsigned dev_id = plot_win->devices_ids[i];
@@ -1804,8 +1985,13 @@ static unsigned populate_plot_data_from_ring_buffer(const struct nvtop_interface
   }
 
   assert(total_to_draw > 0);
-  assert(size_data_buff % total_to_draw == 0);
-  unsigned max_data_to_copy = size_data_buff / total_to_draw;
+  // size_data_buff holds num_samples * MAX_LINES_PER_PLOT values; every
+  // plotted sample occupies total_to_draw consecutive slots (the renderers
+  // index data[sample * num_lines + series]). Dividing by the series count
+  // here halved the plotted history for multi-series graphs and left the
+  // right half of the chart as uninitialized zeros.
+  assert(size_data_buff >= total_to_draw);
+  unsigned max_data_to_copy = size_data_buff / MAX_LINES_PER_PLOT;
   double (*data_split)[total_to_draw] = (double (*)[total_to_draw])data;
 
   unsigned in_processing = 0;
@@ -1850,6 +2036,10 @@ static unsigned populate_plot_data_from_ring_buffer(const struct nvtop_interface
         case plot_information_count:
           break;
         }
+        // Unsampled history is NaN so the plot skips it instead of drawing
+        // a misleading zero line for data that was never recorded.
+        for (unsigned j = 0; j < max_data_to_copy; ++j)
+          data_split[j][in_processing] = NAN;
         // Copy the data
         unsigned data_in_ring = interface_ring_buffer_data_stored(&interface->saved_data_ring, dev_id, data_ring_index);
         if (interface->options.plot_left_to_right) {
@@ -1877,12 +2067,18 @@ static void draw_plots(struct nvtop_interface *interface) {
 
     char plot_legend[MAX_LINES_PER_PLOT][PLOT_MAX_LEGEND_SIZE];
 
-    unsigned num_lines =
-        populate_plot_data_from_ring_buffer(interface, &interface->plots[plot_id], interface->plots[plot_id].num_data,
-                                            interface->plots[plot_id].data, plot_legend);
+    unsigned num_lines = populate_plot_data_from_ring_buffer(
+        interface, &interface->plots[plot_id], interface->plots[plot_id].num_data * MAX_LINES_PER_PLOT,
+        interface->plots[plot_id].data, plot_legend);
 
     nvtop_line_plot(interface->plots[plot_id].plot_window, interface->plots[plot_id].num_data,
-                    interface->plots[plot_id].data, num_lines, !interface->options.plot_left_to_right, plot_legend);
+                    interface->plots[plot_id].data, num_lines);
+    // Unicode mode carries the legend on the frame's top border, keeping
+    // every inner row for the trace itself.
+    nvtop_plot_draw_legend(interface->plots[plot_id].win, 3, num_lines,
+                           !interface->options.plot_left_to_right, plot_legend);
+
+    wnoutrefresh(interface->plots[plot_id].win);
 
     wnoutrefresh(interface->plots[plot_id].plot_window);
   }

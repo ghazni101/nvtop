@@ -51,9 +51,34 @@ enum interface_color {
   gpu_mem_plot_color,
   gpu_plot_color_3,
   gpu_plot_color_4,
+  // Chart fill gradient: solid background fill fading from the series
+  // color at the curve's edge through a mid shade to a dark body shade.
+  gpu_util_plot_fill_color,
+  gpu_mem_plot_fill_color,
+  gpu_plot_fill_color_3,
+  gpu_plot_fill_color_4,
+  gpu_util_plot_mid_color,
+  gpu_mem_plot_mid_color,
+  gpu_plot_mid_color_3,
+  gpu_plot_mid_color_4,
+  gpu_util_plot_body_color,
+  gpu_mem_plot_body_color,
+  gpu_plot_body_color_3,
+  gpu_plot_body_color_4,
+  // Braille fill gradient: the cells right below the curve use a mid
+  // foreground shade before the dim body.
+  gpu_util_plot_mid_fg_color,
+  gpu_mem_plot_mid_fg_color,
+  gpu_plot_mid_fg_color_3,
+  gpu_plot_mid_fg_color_4,
   dim_color,
   grid_color,
-  // Contrasting pairs to overlay the meter value text on top of the fill
+  // Chrome grays: card/plot frames, dimmed labels, meter tracks. When the
+  // terminal offers 256 colors these become palette grays, otherwise they
+  // degrade to the default foreground with A_DIM.
+  frame_color,
+  label_color,
+  track_color,
   value_on_green_color,
   value_on_yellow_color,
   value_on_red_color,
@@ -61,6 +86,7 @@ enum interface_color {
 };
 
 struct device_window {
+  WINDOW *frame_win; // Card chrome: rounded frame carrying the GPU name
   WINDOW *gpu_util_enc_dec;
   WINDOW *gpu_util_no_enc_or_dec;
   WINDOW *gpu_util_no_enc_and_dec;
@@ -101,6 +127,7 @@ struct gpuid_and_process {
 struct process_window {
   unsigned offset;
   unsigned offset_column;
+  WINDOW *frame_win; // Card chrome around the list (unicode, tall enough)
   WINDOW *process_win;
   WINDOW *process_with_option_win;
   unsigned selected_row;

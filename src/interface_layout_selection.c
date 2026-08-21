@@ -17,7 +17,7 @@ static unsigned min_rows_taken_by_process(unsigned rows, unsigned num_devices) {
 }
 
 static const unsigned cols_needed_box_drawing = 5;
-static const unsigned min_plot_rows = 7;
+static const unsigned min_plot_rows = 6; // frame + 4 trace rows
 static unsigned min_plot_cols(unsigned num_data_info_to_plot) {
   return cols_needed_box_drawing + 10 * num_data_info_to_plot;
 }
@@ -354,6 +354,16 @@ void compute_sizes_from_layout(unsigned devices_count, unsigned device_header_ro
     unsigned rows_per_stack = rows_for_plots / num_plot_stacks;
     if (!process_win_hide && rows_per_stack > 23)
       rows_per_stack = 23;
+    // On tall terminals hand surplus rows back to the charts: the process
+    // list grows up to a sane maximum instead of eating the screen.
+    if (!process_win_hide && process_field_displayed_count(process_displayed) > 0 &&
+        min_rows_for_process < 20) {
+      unsigned leftover = rows_for_plots - rows_per_stack * num_plot_stacks;
+      if (leftover > 0 && min_rows_for_process + leftover > 20) {
+        unsigned give_back = leftover - (20 - min_rows_for_process);
+        rows_per_stack += give_back / num_plot_stacks;
+      }
+    }
     unsigned num_plot_done = 0;
     unsigned currentPosX = 0, currentPosY = rows_for_header;
     for (unsigned stack_id = 0; stack_id < num_plot_stacks; ++stack_id) {
