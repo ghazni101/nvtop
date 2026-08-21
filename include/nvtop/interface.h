@@ -47,6 +47,10 @@ void update_window_size_to_terminal_size(struct nvtop_interface *inter);
 
 void interface_key(int keyId, struct nvtop_interface *inter);
 
+// Handle a mouse click at terminal cell (y, x); currently activates the
+// settings gear drawn on the card borders.
+void interface_handle_mouse(int y, int x, struct nvtop_interface *inter);
+
 bool is_escape_for_quit(struct nvtop_interface *inter);
 
 bool interface_freeze_processes(struct nvtop_interface *interface);

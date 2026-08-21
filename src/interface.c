@@ -91,7 +91,8 @@ static unsigned int sizeof_process_field[process_field_count] = {
 };
 
 static void alloc_device_window(unsigned int start_row, unsigned int start_col, unsigned int totalcol,
-                                unsigned int totalrow, bool with_frame, struct device_window *dwin) {
+                                unsigned int totalrow, bool with_frame, bool with_stats,
+                                struct device_window *dwin) {
 
   const unsigned int spacer = 1;
 
@@ -109,30 +110,39 @@ static void alloc_device_window(unsigned int start_row, unsigned int start_col, 
     totalcol -= 2;
   }
 
-  // Line 1 = GPU clk | MEM clk | Temp | Fan | Power
-  dwin->gpu_clock_info = newwin(1, sizeof_device_field[device_clock], start_row, start_col);
-  if (dwin->gpu_clock_info == NULL)
-    goto alloc_error;
-  dwin->mem_clock_info = newwin(1, sizeof_device_field[device_mem_clock], start_row,
-                                start_col + spacer + sizeof_device_field[device_clock]);
-  if (dwin->mem_clock_info == NULL)
-    goto alloc_error;
-  dwin->temperature =
-      newwin(1, sizeof_device_field[device_temperature], start_row,
-             start_col + spacer * 2 + sizeof_device_field[device_clock] + sizeof_device_field[device_mem_clock]);
-  if (dwin->temperature == NULL)
-    goto alloc_error;
-  dwin->fan_speed = newwin(1, sizeof_device_field[device_fan_speed], start_row,
-                           start_col + spacer * 3 + sizeof_device_field[device_clock] +
-                               sizeof_device_field[device_mem_clock] + sizeof_device_field[device_temperature]);
-  if (dwin->fan_speed == NULL)
-    goto alloc_error;
-  dwin->power_info =
-      newwin(1, sizeof_device_field[device_power], start_row,
-             start_col + spacer * 4 + sizeof_device_field[device_clock] + sizeof_device_field[device_mem_clock] +
-                 sizeof_device_field[device_temperature] + sizeof_device_field[device_fan_speed]);
-  if (dwin->power_info == NULL)
-    goto alloc_error;
+  // Line 1 = GPU clk | MEM clk | Temp | Fan | Power (optional)
+  dwin->gpu_clock_info = NULL;
+  dwin->mem_clock_info = NULL;
+  dwin->temperature = NULL;
+  dwin->fan_speed = NULL;
+  dwin->power_info = NULL;
+  unsigned meter_row = start_row;
+  if (with_stats) {
+    dwin->gpu_clock_info = newwin(1, sizeof_device_field[device_clock], start_row, start_col);
+    if (dwin->gpu_clock_info == NULL)
+      goto alloc_error;
+    dwin->mem_clock_info = newwin(1, sizeof_device_field[device_mem_clock], start_row,
+                                  start_col + spacer + sizeof_device_field[device_clock]);
+    if (dwin->mem_clock_info == NULL)
+      goto alloc_error;
+    dwin->temperature =
+        newwin(1, sizeof_device_field[device_temperature], start_row,
+               start_col + spacer * 2 + sizeof_device_field[device_clock] + sizeof_device_field[device_mem_clock]);
+    if (dwin->temperature == NULL)
+      goto alloc_error;
+    dwin->fan_speed = newwin(1, sizeof_device_field[device_fan_speed], start_row,
+                             start_col + spacer * 3 + sizeof_device_field[device_clock] +
+                                 sizeof_device_field[device_mem_clock] + sizeof_device_field[device_temperature]);
+    if (dwin->fan_speed == NULL)
+      goto alloc_error;
+    dwin->power_info =
+        newwin(1, sizeof_device_field[device_power], start_row,
+               start_col + spacer * 4 + sizeof_device_field[device_clock] + sizeof_device_field[device_mem_clock] +
+                   sizeof_device_field[device_temperature] + sizeof_device_field[device_fan_speed]);
+    if (dwin->power_info == NULL)
+      goto alloc_error;
+    meter_row += 1;
+  }
 
   // Line 2 = GPU used [| Encoder | Decoder]
   // Line 3 = MEM used
@@ -151,28 +161,27 @@ static void alloc_device_window(unsigned int start_row, unsigned int start_col, 
   int size_gpu_with_one = totalcol - spacer - size_decode;
   int size_gpu_alone = totalcol;
 
-  dwin->gpu_util_enc_dec = newwin(1, size_gpu_with_both, start_row + 1, start_col);
+  dwin->gpu_util_enc_dec = newwin(1, size_gpu_with_both, meter_row, start_col);
   if (dwin->gpu_util_enc_dec == NULL)
     goto alloc_error;
-  dwin->encode_util = newwin(1, size_encode, start_row + 1, start_col + spacer + size_gpu_with_both);
+  dwin->encode_util = newwin(1, size_encode, meter_row, start_col + spacer + size_gpu_with_both);
   if (dwin->encode_util == NULL)
     goto alloc_error;
-  dwin->decode_util =
-      newwin(1, size_decode, start_row + 1, start_col + spacer * 2 + size_gpu_with_both + size_encode);
+  dwin->decode_util = newwin(1, size_decode, meter_row, start_col + spacer * 2 + size_gpu_with_both + size_encode);
   if (dwin->decode_util == NULL)
     goto alloc_error;
-  dwin->encdec_util = newwin(1, size_encode * 2, start_row + 1, start_col + spacer + size_gpu_with_both);
+  dwin->encdec_util = newwin(1, size_encode * 2, meter_row, start_col + spacer + size_gpu_with_both);
   if (dwin->encdec_util == NULL)
     goto alloc_error;
   // For auto-hide encode / decode window
-  dwin->gpu_util_no_enc_or_dec = newwin(1, size_gpu_with_one, start_row + 1, start_col);
+  dwin->gpu_util_no_enc_or_dec = newwin(1, size_gpu_with_one, meter_row, start_col);
   if (dwin->gpu_util_no_enc_or_dec == NULL)
     goto alloc_error;
-  dwin->gpu_util_no_enc_and_dec = newwin(1, size_gpu_alone, start_row + 1, start_col);
+  dwin->gpu_util_no_enc_and_dec = newwin(1, size_gpu_alone, meter_row, start_col);
   if (dwin->gpu_util_no_enc_and_dec == NULL)
     goto alloc_error;
 
-  dwin->mem_util = newwin(1, totalcol, start_row + 2, start_col);
+  dwin->mem_util = newwin(1, totalcol, meter_row + 1, start_col);
   if (dwin->mem_util == NULL)
     goto alloc_error;
 
@@ -180,15 +189,15 @@ static void alloc_device_window(unsigned int start_row, unsigned int start_col, 
   dwin->dec_was_visible = false;
 
   // Line 4 = Number of shading cores | L2 Features
-  dwin->shader_cores = newwin(1, sizeof_device_field[device_shadercores], start_row + 3, start_col);
+  dwin->shader_cores = newwin(1, sizeof_device_field[device_shadercores], meter_row + 2, start_col);
   if (dwin->shader_cores == NULL)
     goto alloc_error;
-  dwin->l2_cache_size = newwin(1, sizeof_device_field[device_l2features], start_row + 3,
+  dwin->l2_cache_size = newwin(1, sizeof_device_field[device_l2features], meter_row + 2,
                                start_col + spacer + sizeof_device_field[device_shadercores]);
   if (dwin->l2_cache_size == NULL)
     goto alloc_error;
   dwin->exec_engines =
-      newwin(1, sizeof_device_field[device_execengines], start_row + 3,
+      newwin(1, sizeof_device_field[device_execengines], meter_row + 2,
              start_col + spacer * 2 + sizeof_device_field[device_shadercores] + sizeof_device_field[device_l2features]);
   if (dwin->exec_engines == NULL)
     goto alloc_error;
@@ -270,16 +279,18 @@ static void initialize_gpu_mem_plot(struct plot_window *plot, struct window_posi
   // window coordinates. At very small heights two levels can share a row —
   // the later (lower) label wins and the earlier one is skipped instead of
   // overprinting it.
-  int last_label_row = -1;
-  static const unsigned label_levels[5] = {100, 75, 50, 25, 0};
-  for (unsigned lvl = 0; lvl < ARRAY_SIZE(label_levels); ++lvl) {
-    int r = plot_label_row(rows, label_levels[lvl]);
-    if (r == last_label_row)
-      continue;
-    last_label_row = r;
-    char text[5];
-    snprintf(text, sizeof(text), "%3u", label_levels[lvl]);
-    mvwprintw(plot->win, r + 1, 0, "%s", text);
+  if (options->show_chart_axis) {
+    int last_label_row = -1;
+    static const unsigned label_levels[5] = {100, 75, 50, 25, 0};
+    for (unsigned lvl = 0; lvl < ARRAY_SIZE(label_levels); ++lvl) {
+      int r = plot_label_row(rows, label_levels[lvl]);
+      if (r == last_label_row)
+        continue;
+      last_label_row = r;
+      char text[5];
+      snprintf(text, sizeof(text), "%3u", label_levels[lvl]);
+      mvwprintw(plot->win, r + 1, 0, "%s", text);
+    }
   }
   plot->data = calloc((size_t)cols * MAX_LINES_PER_PLOT, sizeof(*plot->data));
   plot->num_data = cols;
@@ -333,13 +344,15 @@ static void initialize_all_windows(struct nvtop_interface *dwin) {
   struct window_position plot_positions[MAX_CHARTS];
   struct window_position setup_position;
 
-  // Row 0 = first layout row, last row = shortcut bar; everything else in between
-  int layout_rows = rows - 1;
+  // The bottom row hosts the shortcut bar when it is shown.
+  bool show_shortcut_bar = dwin->options.show_shortcut_bar;
+  int layout_rows = rows - (show_shortcut_bar ? 1 : 0);
   if (layout_rows < 1)
     layout_rows = 1;
   compute_sizes_from_layout(devices_count,
-                            (dwin->options.has_gpu_info_bar ? 4 : 3) + (layout_rows < 14 ? 0 : 1), device_length(),
-                            (unsigned)layout_rows, cols, dwin->options.gpu_specific_opts,
+                            (dwin->options.has_gpu_info_bar ? 4 : 3) + (layout_rows < 14 ? 0 : 1) -
+                                (dwin->options.show_header_stats ? 0 : 1),
+                            device_length(), (unsigned)layout_rows, cols, dwin->options.gpu_specific_opts,
                             dwin->options.process_fields_displayed, device_positions, &dwin->num_plots,
                             plot_positions, map_device_to_plot, &process_position, &setup_position,
                             dwin->options.hide_processes_list);
@@ -349,13 +362,14 @@ static void initialize_all_windows(struct nvtop_interface *dwin) {
   bool compact_header = layout_rows < 14;
   for (unsigned int i = 0; i < devices_count; ++i) {
     alloc_device_window(device_positions[i].posY, device_positions[i].posX, device_positions[i].sizeX,
-                        device_positions[i].sizeY, !compact_header, &dwin->devices_win[i]);
+                        device_positions[i].sizeY, !compact_header, dwin->options.show_header_stats,
+                        &dwin->devices_win[i]);
   }
 
   alloc_process_with_option(dwin, process_position.posX, process_position.posY, process_position.sizeX,
                             process_position.sizeY);
 
-  dwin->shortcut_window = newwin(1, cols, rows - 1, 0);
+  dwin->shortcut_window = show_shortcut_bar ? newwin(1, cols, rows - 1, 0) : NULL;
 
   alloc_setup_window(&setup_position, &dwin->setup_win);
   nvtop_pid = getpid();
@@ -468,6 +482,7 @@ struct nvtop_interface *initialize_curses(unsigned total_devices, unsigned devic
   cbreak();
   noecho();
   keypad(stdscr, TRUE);
+  mousemask(BUTTON1_PRESSED, NULL);
   curs_set(0);
 
   interface->redraw_all = true;
@@ -778,6 +793,7 @@ static void encode_decode_show_select(struct device_window *dev, bool encode_val
 static void draw_devices(struct list_head *devices, struct nvtop_interface *interface) {
   struct gpu_info *device;
   unsigned dev_id = 0;
+  interface->gear_count = 0;
 
   list_for_each_entry(device, devices, list) {
     struct device_window *dev = &interface->devices_win[dev_id];
@@ -832,6 +848,22 @@ static void draw_devices(struct list_head *devices, struct nvtop_interface *inte
           mvwaddch(dev->frame_win, y, fcols - 1, ACS_VLINE);
         }
       }
+      // Settings gear in the top-right of the border; clicking it opens
+      // the setup window (see interface_handle_mouse).
+      int gear_x = fcols - 4;
+      if (interface_unicode && gear_x > 2) {
+        wattr_set(dev->frame_win, A_BOLD, interface_use_color ? cyan_color : 0, NULL);
+        mvwaddstr(dev->frame_win, 0, gear_x, " \xe2\x9a\x99 "); // ⚙
+        wattr_set(dev->frame_win, A_NORMAL, 0, NULL);
+        if (interface->gear_count < ARRAY_SIZE(interface->gear_rects)) {
+          int by = 0, bx = 0;
+          getbegyx(dev->frame_win, by, bx);
+          interface->gear_rects[interface->gear_count].y = by;
+          interface->gear_rects[interface->gear_count].x0 = bx + gear_x;
+          interface->gear_rects[interface->gear_count].x1 = bx + gear_x + 2;
+          interface->gear_count++;
+        }
+      }
       char id[16];
       snprintf(id, sizeof(id), "GPU %u", dev_id);
       const char *name = NULL;
@@ -848,7 +880,7 @@ static void draw_devices(struct list_head *devices, struct nvtop_interface *inte
         pos += id_len;
         wattr_set(dev->frame_win, A_NORMAL, 0, NULL);
         if (name && name[0]) {
-          int budget = fcols - 1 /*╮*/ - pos - sep_cols - 1 /*trailing space*/;
+          int budget = fcols - 1 /*╮*/ - pos - sep_cols - 1 /*trailing space*/ - (interface_unicode ? 4 : 0) /*gear zone*/;
           if (budget > 0) {
             int name_len = (int)strlen(name);
             if (name_len > budget)
@@ -921,13 +953,13 @@ static void draw_devices(struct list_head *devices, struct nvtop_interface *inte
       snprintf(buff, 1024, "N/A");
       draw_percentage_meter(dev->mem_util, "MEM", 0, buff);
     }
-    if (GPUINFO_DYNAMIC_FIELD_VALID(&device->dynamic_info, gpu_temp)) {
+    if (dev->temperature && GPUINFO_DYNAMIC_FIELD_VALID(&device->dynamic_info, gpu_temp)) {
       if (!GPUINFO_STATIC_FIELD_VALID(&device->static_info, temperature_slowdown_threshold))
         device->static_info.temperature_slowdown_threshold = 0;
       draw_temp_color(dev->temperature, device->dynamic_info.gpu_temp,
                       device->static_info.temperature_slowdown_threshold,
                       !interface->options.temperature_in_fahrenheit);
-    } else {
+    } else if (dev->temperature) {
       werase(dev->temperature);
       set_chrome(dev->temperature, label_color);
       wprintw(dev->temperature, "TEMP N/A");
@@ -944,6 +976,7 @@ static void draw_devices(struct list_head *devices, struct nvtop_interface *inte
     }
 
     // FAN
+    if (dev->fan_speed) {
     werase(dev->fan_speed);
     set_chrome(dev->fan_speed, label_color);
     wprintw(dev->fan_speed, "FAN ");
@@ -962,8 +995,10 @@ static void draw_devices(struct list_head *devices, struct nvtop_interface *inte
       wprintw(dev->fan_speed, "N/A");
     }
     wnoutrefresh(dev->fan_speed);
+    }
 
     // GPU CLOCK
+    if (dev->gpu_clock_info) {
     werase(dev->gpu_clock_info);
     set_chrome(dev->gpu_clock_info, label_color);
     wprintw(dev->gpu_clock_info, "GPU ");
@@ -973,8 +1008,10 @@ static void draw_devices(struct list_head *devices, struct nvtop_interface *inte
     else
       wprintw(dev->gpu_clock_info, "N/A");
     wnoutrefresh(dev->gpu_clock_info);
+    }
 
     // MEM CLOCK
+    if (dev->mem_clock_info) {
     werase(dev->mem_clock_info);
     set_chrome(dev->mem_clock_info, label_color);
     wprintw(dev->mem_clock_info, "MEM ");
@@ -984,9 +1021,11 @@ static void draw_devices(struct list_head *devices, struct nvtop_interface *inte
     else
       wprintw(dev->mem_clock_info, "N/A");
     wnoutrefresh(dev->mem_clock_info);
+    }
 
     // POWER — the live draw is bold and colored by headroom, the max stays
     // a plain reference.
+    if (dev->power_info) {
     werase(dev->power_info);
     set_chrome(dev->power_info, label_color);
     wprintw(dev->power_info, "POW ");
@@ -1015,6 +1054,7 @@ static void draw_devices(struct list_head *devices, struct nvtop_interface *inte
       wprintw(dev->power_info, "N/A");
     }
     wnoutrefresh(dev->power_info);
+    }
 
     if (interface->options.has_gpu_info_bar) {
       // Number of shader cores
@@ -1883,6 +1923,10 @@ static void draw_process_shortcuts(struct nvtop_interface *interface) {
 }
 
 static void draw_shortcuts(struct nvtop_interface *interface) {
+  if (!interface->options.show_shortcut_bar || interface->shortcut_window == NULL) {
+    interface->process.option_window.previous_state = interface->process.option_window.state;
+    return;
+  }
   shortcut_bar_first_entry = true;
   if (interface->setup_win.visible) {
     draw_setup_window_shortcuts(interface);
@@ -2075,7 +2119,8 @@ static void draw_plots(struct nvtop_interface *interface) {
                     interface->plots[plot_id].data, num_lines);
     // Unicode mode carries the legend on the frame's top border, keeping
     // every inner row for the trace itself.
-    nvtop_plot_draw_legend(interface->plots[plot_id].win, 3, num_lines,
+    nvtop_plot_draw_legend(interface->plots[plot_id].win, 3,
+                           interface->options.show_chart_legend ? num_lines : 0,
                            !interface->options.plot_left_to_right, plot_legend);
 
     wnoutrefresh(interface->plots[plot_id].win);
@@ -2117,15 +2162,35 @@ void draw_gpu_info_ncurses(unsigned devices_count, struct list_head *devices, st
 }
 
 void update_window_size_to_terminal_size(struct nvtop_interface *inter) {
+  // Re-allocating the windows resets the setup window state; keep an open
+  // setup open across option toggles that need a re-layout.
+  bool setup_was_visible = inter->setup_win.visible;
   endwin();
   erase();
   refresh();
   refresh();
   delete_all_windows(inter);
   initialize_all_windows(inter);
+  inter->setup_win.visible = setup_was_visible;
   inter->redraw_all = true;
   inter->devices_dirty = true;
   inter->process_dirty = true;
+}
+
+void interface_handle_mouse(int y, int x, struct nvtop_interface *interface) {
+  for (unsigned i = 0; i < interface->gear_count; ++i) {
+    if (interface->gear_rects[i].y == y && x >= interface->gear_rects[i].x0 &&
+        x <= interface->gear_rects[i].x1) {
+      if (interface->setup_win.visible) {
+        interface->setup_win.visible = false;
+        update_window_size_to_terminal_size(interface);
+      } else {
+        show_setup_window(interface);
+      }
+      interface->setup_dirty = true;
+      return;
+    }
+  }
 }
 
 bool is_escape_for_quit(struct nvtop_interface *interface) {

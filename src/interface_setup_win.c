@@ -46,11 +46,15 @@ enum setup_general_options {
   setup_general_color,
   setup_general_show_startup_support_messages,
   setup_general_update_interval,
+  setup_general_shortcut_bar,
   setup_general_options_count
 };
 
 static const char *setup_general_option_description[setup_general_options_count] = {
-    "Disable color (requires save and restart)", "Show support messages on startup", "Update interval (seconds)"};
+    "Disable color (requires save and restart)",
+    "Show support messages on startup",
+    "Update interval (seconds)",
+    "Show shortcut bar (F2 Setup, ... hints)"};
 
 // Header Options
 
@@ -58,23 +62,28 @@ enum setup_header_options {
   setup_header_toggle_fahrenheit,
   setup_header_enc_dec_timer,
   setup_header_gpu_info_bar,
+  setup_header_show_stats,
   setup_header_options_count
 };
 
 static const char *setup_header_option_descriptions[setup_header_options_count] = {
     "Temperature in fahrenheit", "Keep displaying Encoder/Decoder rate (after reaching an idle state)",
-    "Display extra GPU info bar"};
+    "Display extra GPU info bar", "Show device statistics (clocks, temp, fan, power)"};
 
 // Chart Options
 
 enum setup_chart_options {
   setup_chart_reverse,
+  setup_chart_show_legend,
+  setup_chart_show_axis,
   setup_chart_color_start, // dynamic color rows: slots 0..slot_count-1
   // setup_chart_all_gpu      = setup_chart_color_start + slot_count     (computed)
   // setup_chart_start_gpu_list = setup_chart_color_start + slot_count+1 (computed)
 };
 
 static const char *setup_chart_reverse_description = "Reverse plot direction";
+static const char *setup_chart_show_legend_description = "Show series legend in chart border";
+static const char *setup_chart_show_axis_description  = "Show percentage axis next to chart";
 static const char *setup_chart_all_gpu_description  = "Displayed all GPUs";
 static const char *setup_chart_gpu_description      = "Displayed GPU";
 
@@ -261,6 +270,13 @@ static void draw_setup_window_general(struct nvtop_interface *interface) {
       interface->setup_win.options_selected[0] == setup_general_update_interval) {
     mvwchgat(interface->setup_win.single, setup_general_update_interval + 1, 0, 6, A_STANDOUT, cyan_color, NULL);
   }
+  option_state = interface->options.show_shortcut_bar;
+  mvwprintw(interface->setup_win.single, setup_general_shortcut_bar + 1, 0, "[%c] %s",
+            option_state_char(option_state), setup_general_option_description[setup_general_shortcut_bar]);
+  if (interface->setup_win.indentation_level == 1 &&
+      interface->setup_win.options_selected[0] == setup_general_shortcut_bar) {
+    mvwchgat(interface->setup_win.single, setup_general_shortcut_bar + 1, 0, 3, A_STANDOUT, cyan_color, NULL);
+  }
   wnoutrefresh(interface->setup_win.single);
 }
 
@@ -314,6 +330,15 @@ static void draw_setup_window_header(struct nvtop_interface *interface) {
   if (interface->setup_win.indentation_level == 1 &&
       interface->setup_win.options_selected[0] == setup_header_gpu_info_bar) {
     mvwchgat(options_win, setup_header_gpu_info_bar + 1, 0, 3, A_STANDOUT, cyan_color, NULL);
+  }
+
+  // Device statistics row
+  option_state = interface->options.show_header_stats;
+  mvwprintw(options_win, setup_header_show_stats + 1, 0, "[%c] %s", option_state_char(option_state),
+            setup_header_option_descriptions[setup_header_show_stats]);
+  if (interface->setup_win.indentation_level == 1 &&
+      interface->setup_win.options_selected[0] == setup_header_show_stats) {
+    mvwchgat(options_win, setup_header_show_stats + 1, 0, 3, A_STANDOUT, cyan_color, NULL);
   }
   wnoutrefresh(options_win);
 }
@@ -374,6 +399,24 @@ static void draw_setup_window_chart(unsigned devices_count, struct list_head *de
   if (interface->setup_win.indentation_level == 1 &&
       interface->setup_win.options_selected[0] == setup_chart_reverse) {
     mvwchgat(option_list_win, setup_chart_reverse + 1, 0, 3, A_STANDOUT, cyan_color, NULL);
+  }
+
+  // Chart legend
+  option_state = interface->options.show_chart_legend;
+  mvwprintw(option_list_win, setup_chart_show_legend + 1, 0, "[%c] %s", option_state_char(option_state),
+            setup_chart_show_legend_description);
+  if (interface->setup_win.indentation_level == 1 &&
+      interface->setup_win.options_selected[0] == setup_chart_show_legend) {
+    mvwchgat(option_list_win, setup_chart_show_legend + 1, 0, 3, A_STANDOUT, cyan_color, NULL);
+  }
+
+  // Chart axis
+  option_state = interface->options.show_chart_axis;
+  mvwprintw(option_list_win, setup_chart_show_axis + 1, 0, "[%c] %s", option_state_char(option_state),
+            setup_chart_show_axis_description);
+  if (interface->setup_win.indentation_level == 1 &&
+      interface->setup_win.options_selected[0] == setup_chart_show_axis) {
+    mvwchgat(option_list_win, setup_chart_show_axis + 1, 0, 3, A_STANDOUT, cyan_color, NULL);
   }
 
   // Dynamic color rows — one per active plot slot
@@ -792,6 +835,10 @@ void handle_setup_win_keypress(int keyId, struct nvtop_interface *interface) {
         if (interface->setup_win.options_selected[0] == setup_general_show_startup_support_messages) {
           interface->options.show_startup_messages = !interface->options.show_startup_messages;
         }
+        if (interface->setup_win.options_selected[0] == setup_general_shortcut_bar) {
+          interface->options.show_shortcut_bar = !interface->options.show_shortcut_bar;
+          update_window_size_to_terminal_size(interface);
+        }
         if (interface->setup_win.options_selected[0] == setup_general_update_interval) {
         }
       }
@@ -811,6 +858,10 @@ void handle_setup_win_keypress(int keyId, struct nvtop_interface *interface) {
           if (interface->setup_win.options_selected[0] == setup_header_gpu_info_bar) {
             interface->options.has_gpu_info_bar = !interface->options.has_gpu_info_bar;
           }
+          if (interface->setup_win.options_selected[0] == setup_header_show_stats) {
+            interface->options.show_header_stats = !interface->options.show_header_stats;
+            update_window_size_to_terminal_size(interface);
+          }
         }
       }
       // Chart Options
@@ -826,6 +877,13 @@ void handle_setup_win_keypress(int keyId, struct nvtop_interface *interface) {
         if (interface->setup_win.indentation_level == 1) {
           if (interface->setup_win.options_selected[0] == setup_chart_reverse) {
             interface->options.plot_left_to_right = !interface->options.plot_left_to_right;
+          }
+          if (interface->setup_win.options_selected[0] == setup_chart_show_legend) {
+            interface->options.show_chart_legend = !interface->options.show_chart_legend;
+          }
+          if (interface->setup_win.options_selected[0] == setup_chart_show_axis) {
+            interface->options.show_chart_axis = !interface->options.show_chart_axis;
+            update_window_size_to_terminal_size(interface);
           }
           // Color rows
           unsigned sel = interface->setup_win.options_selected[0];

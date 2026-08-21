@@ -377,8 +377,8 @@ void nvtop_line_plot(WINDOW *win, size_t num_data, const double *data, unsigned 
 
 void nvtop_plot_draw_legend(WINDOW *border_win, unsigned border_start_x, unsigned num_lines, bool legend_left,
                             char legend[MAX_LINES_PER_PLOT][PLOT_MAX_LEGEND_SIZE]) {
-  if (num_lines == 0)
-    return;
+  // num_lines == 0 redraws a clean border: used when the legend is toggled
+  // off so stale text never lingers.
   int rows, cols;
   getmaxyx(border_win, rows, cols);
   (void)rows;

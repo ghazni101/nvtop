@@ -130,6 +130,10 @@ void alloc_interface_options_internals(char *config_location, unsigned num_devic
   options->filter_nvtop_pid = true;
   options->has_gpu_info_bar = false;
   options->hide_processes_list = false;
+  options->show_header_stats = true;
+  options->show_chart_legend = true;
+  options->show_chart_axis = true;
+  options->show_shortcut_bar = true;
   options->gpu_plot_color_idx[0] = 1;  // Cyan
   options->gpu_plot_color_idx[1] = 3;  // Yellow
   options->gpu_plot_color_idx[2] = 2;  // Green
@@ -171,14 +175,18 @@ static const char general_section[] = "GeneralOption";
 static const char general_value_use_color[] = "UseColor";
 static const char general_value_update_interval[] = "UpdateInterval";
 static const char general_show_messages[] = "ShowInfoMessages";
+static const char general_value_show_shortcut_bar[] = "ShowShortcutBar";
 
 static const char header_section[] = "HeaderOption";
 static const char header_value_use_fahrenheit[] = "UseFahrenheit";
 static const char header_value_encode_decode_timer[] = "EncodeHideTimer";
 static const char header_value_gpu_info_bar[] = "GPUInfoBar";
+static const char header_value_show_stats[] = "ShowHeaderStats";
 
 static const char chart_section[] = "ChartOption";
 static const char chart_value_reverse[] = "ReverseChart";
+static const char chart_value_show_legend[] = "ShowChartLegend";
+static const char chart_value_show_axis[] = "ShowChartAxis";
 static const char *chart_value_gpu_plot_color[MAX_LINES_PER_PLOT] = {
     "GpuPlotColor0", "GpuPlotColor1", "GpuPlotColor2", "GpuPlotColor3"};
 
@@ -230,6 +238,14 @@ static int nvtop_option_ini_handler(void *user, const char *section, const char 
         ini_data->options->show_startup_messages = false;
       }
     }
+    if (strcmp(name, general_value_show_shortcut_bar) == 0) {
+      if (strcmp(value, "true") == 0) {
+        ini_data->options->show_shortcut_bar = true;
+      }
+      if (strcmp(value, "false") == 0) {
+        ini_data->options->show_shortcut_bar = false;
+      }
+    }
   }
   // Header Options
   if (strcmp(section, header_section) == 0) {
@@ -254,6 +270,14 @@ static int nvtop_option_ini_handler(void *user, const char *section, const char 
         ini_data->options->has_gpu_info_bar = false;
       }
     }
+    if (strcmp(name, header_value_show_stats) == 0) {
+      if (strcmp(value, "true") == 0) {
+        ini_data->options->show_header_stats = true;
+      }
+      if (strcmp(value, "false") == 0) {
+        ini_data->options->show_header_stats = false;
+      }
+    }
   }
   // Chart Options
   if (strcmp(section, chart_section) == 0) {
@@ -265,6 +289,24 @@ static int nvtop_option_ini_handler(void *user, const char *section, const char 
         ini_data->options->plot_left_to_right = false;
       }
     }
+    if (strcmp(name, chart_value_show_legend) == 0) {
+      if (strcmp(value, "true") == 0) {
+        ini_data->options->show_chart_legend = true;
+      }
+      if (strcmp(value, "false") == 0) {
+        ini_data->options->show_chart_legend = false;
+      }
+    }
+    if (strcmp(name, chart_value_show_axis) == 0) {
+      if (strcmp(value, "true") == 0) {
+        ini_data->options->show_chart_axis = true;
+      }
+      if (strcmp(value, "false") == 0) {
+        ini_data->options->show_chart_axis = false;
+      }
+    }
+  }
+  if (strcmp(section, chart_section) == 0) {
     for (unsigned s = 0; s < MAX_LINES_PER_PLOT; ++s) {
       if (strcmp(name, chart_value_gpu_plot_color[s]) == 0) {
         for (unsigned i = 0; i < plot_color_names_count; ++i) {
@@ -413,16 +455,20 @@ bool save_interface_options_to_config_file(unsigned total_dev_count, const nvtop
   fprintf(config_file, "%s = %s\n", general_value_use_color, boolean_string(options->use_color));
   fprintf(config_file, "%s = %d\n", general_value_update_interval, options->update_interval);
   fprintf(config_file, "%s = %s\n", general_show_messages, boolean_string(options->show_startup_messages));
+  fprintf(config_file, "%s = %s\n", general_value_show_shortcut_bar, boolean_string(options->show_shortcut_bar));
 
   // Header Options
   fprintf(config_file, "\n[%s]\n", header_section);
   fprintf(config_file, "%s = %s\n", header_value_use_fahrenheit, boolean_string(options->temperature_in_fahrenheit));
   fprintf(config_file, "%s = %e\n", header_value_encode_decode_timer, options->encode_decode_hiding_timer);
   fprintf(config_file, "%s = %s\n", header_value_gpu_info_bar, boolean_string(options->has_gpu_info_bar));
+  fprintf(config_file, "%s = %s\n", header_value_show_stats, boolean_string(options->show_header_stats));
 
   // Chart Options
   fprintf(config_file, "\n[%s]\n", chart_section);
   fprintf(config_file, "%s = %s\n", chart_value_reverse, boolean_string(options->plot_left_to_right));
+  fprintf(config_file, "%s = %s\n", chart_value_show_legend, boolean_string(options->show_chart_legend));
+  fprintf(config_file, "%s = %s\n", chart_value_show_axis, boolean_string(options->show_chart_axis));
   for (unsigned s = 0; s < MAX_LINES_PER_PLOT; ++s)
     fprintf(config_file, "%s = %s\n", chart_value_gpu_plot_color[s],
             plot_color_names[options->gpu_plot_color_idx[s]]);

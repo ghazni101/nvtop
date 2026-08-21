@@ -192,6 +192,12 @@ struct nvtop_interface {
   bool process_dirty;
   bool setup_dirty;
   bool use_unicode;
+  // Clickable settings-gear hotspots on the card borders, refreshed by
+  // draw_devices.
+  struct {
+    int y, x0, x1;
+  } gear_rects[32];
+  unsigned gear_count;
 };
 
 enum device_field {

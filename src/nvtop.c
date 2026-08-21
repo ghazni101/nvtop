@@ -385,6 +385,12 @@ int main(int argc, char **argv) {
     case KEY_RESIZE:
       update_window_size_to_terminal_size(interface);
       break;
+    case KEY_MOUSE: {
+      MEVENT mouse_event;
+      if (getmouse(&mouse_event) == OK && (mouse_event.bstate & BUTTON1_PRESSED))
+        interface_handle_mouse(mouse_event.y, mouse_event.x, interface);
+      break;
+    }
     case KEY_F(2):
     case KEY_F(5):
     case KEY_F(9):
