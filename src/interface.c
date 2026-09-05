@@ -746,80 +746,6 @@ static void draw_temp_color(WINDOW *win, unsigned int temp, unsigned int temp_sl
   wnoutrefresh(win);
 }
 
-static inline void werase_and_wnoutrefresh(WINDOW *w) {
-  werase(w);
-  wnoutrefresh(w);
-}
-
-static bool cleaned_enc_window(struct device_window *dev, double encode_decode_hiding_timer, nvtop_time tnow) {
-  if (encode_decode_hiding_timer > 0. && nvtop_difftime(dev->last_encode_seen, tnow) > encode_decode_hiding_timer) {
-    if (dev->enc_was_visible) {
-      dev->enc_was_visible = false;
-      if (dev->dec_was_visible) {
-        werase_and_wnoutrefresh(dev->gpu_util_enc_dec);
-      } else {
-        werase_and_wnoutrefresh(dev->gpu_util_no_enc_or_dec);
-      }
-    }
-    return true;
-  } else {
-    return false;
-  }
-}
-
-static bool cleaned_dec_window(struct device_window *dev, double encode_decode_hiding_timer, nvtop_time tnow) {
-  if (encode_decode_hiding_timer > 0. && nvtop_difftime(dev->last_decode_seen, tnow) > encode_decode_hiding_timer) {
-    if (dev->dec_was_visible) {
-      dev->dec_was_visible = false;
-      if (dev->enc_was_visible) {
-        werase_and_wnoutrefresh(dev->gpu_util_enc_dec);
-      } else {
-        werase_and_wnoutrefresh(dev->gpu_util_no_enc_or_dec);
-      }
-    }
-    return true;
-  } else {
-    return false;
-  }
-}
-
-static void encode_decode_show_select(struct device_window *dev, bool encode_valid, bool decode_valid,
-                                      unsigned encode_rate, unsigned decode_rate, double encode_decode_hiding_timer,
-                                      bool encode_decode_shared, bool *display_encode, bool *display_decode) {
-  nvtop_time tnow;
-  nvtop_get_current_time(&tnow);
-  if (encode_valid && encode_rate > 0) {
-    *display_encode = true;
-    dev->last_encode_seen = tnow;
-    if (!dev->enc_was_visible) {
-      dev->enc_was_visible = true;
-      if (!dev->dec_was_visible) {
-        werase_and_wnoutrefresh(dev->gpu_util_no_enc_and_dec);
-      } else {
-        werase_and_wnoutrefresh(dev->gpu_util_no_enc_or_dec);
-      }
-    }
-  } else {
-    *display_encode = !cleaned_enc_window(dev, encode_decode_hiding_timer, tnow);
-  }
-  // If shared, rely on decode
-  *display_encode = *display_encode && !encode_decode_shared;
-  if (decode_valid && decode_rate > 0) {
-    *display_decode = true;
-    dev->last_decode_seen = tnow;
-    if (!dev->dec_was_visible) {
-      dev->dec_was_visible = true;
-      if (!dev->enc_was_visible) {
-        werase_and_wnoutrefresh(dev->gpu_util_no_enc_and_dec);
-      } else {
-        werase_and_wnoutrefresh(dev->gpu_util_no_enc_or_dec);
-      }
-    }
-  } else {
-    *display_decode = !cleaned_dec_window(dev, encode_decode_hiding_timer, tnow);
-  }
-}
-
 static void draw_devices(struct list_head *devices, struct nvtop_interface *interface) {
   struct gpu_info *device;
   unsigned dev_id = 0;
@@ -829,57 +755,8 @@ static void draw_devices(struct list_head *devices, struct nvtop_interface *inte
   list_for_each_entry(device, devices, list) {
     struct device_window *dev = &interface->devices_win[dev_id];
 
-    bool display_encode = false;
-    bool display_decode = false;
-    encode_decode_show_select(dev, GPUINFO_DYNAMIC_FIELD_VALID(&device->dynamic_info, encoder_rate),
-                              GPUINFO_DYNAMIC_FIELD_VALID(&device->dynamic_info, decoder_rate),
-                              device->dynamic_info.encoder_rate, device->dynamic_info.decoder_rate,
-                              interface->options.encode_decode_hiding_timer, device->static_info.encode_decode_shared,
-                              &display_encode, &display_decode);
-
-    WINDOW *gpu_util_win;
-    WINDOW *encode_win = dev->encode_util;
-    WINDOW *decode_win = dev->decode_util;
-    if ((display_encode && display_decode) || (display_decode && device->static_info.encode_decode_shared)) {
-      gpu_util_win = dev->gpu_util_enc_dec;
-      if (device->static_info.encode_decode_shared)
-        decode_win = dev->encdec_util;
-    } else {
-      if (display_encode || display_decode) {
-        // If encode only, place at decode location
-        encode_win = dev->decode_util;
-        gpu_util_win = dev->gpu_util_no_enc_or_dec;
-      } else {
-        gpu_util_win = dev->gpu_util_no_enc_and_dec;
-      }
-    }
-    // Standalone always-visible gear in the screen's top-right corner.
-    if (interface->gear_window) {
-      werase(interface->gear_window);
-      wattr_set(interface->gear_window, A_BOLD, interface_use_color ? cyan_color : 0, NULL);
-      if (interface_unicode)
-        mvwaddstr(interface->gear_window, 0, 0, " \xe2\x9a\x99 "); // ⚙
-      else
-        mvwaddstr(interface->gear_window, 0, 0, "[S]");
-      wattr_set(interface->gear_window, A_NORMAL, 0, NULL);
-      wnoutrefresh(interface->gear_window);
-    }
+    WINDOW *gpu_util_win = dev->gpu_util_no_enc_and_dec;
     char buff[1024];
-    if (display_encode) {
-      unsigned rate =
-          GPUINFO_DYNAMIC_FIELD_VALID(&device->dynamic_info, encoder_rate) ? device->dynamic_info.encoder_rate : 0;
-      snprintf(buff, 1024, "%u%%", rate);
-      draw_percentage_meter(encode_win, "ENC", rate, buff);
-    }
-    if (display_decode) {
-      unsigned rate =
-          GPUINFO_DYNAMIC_FIELD_VALID(&device->dynamic_info, decoder_rate) ? device->dynamic_info.decoder_rate : 0;
-      snprintf(buff, 1024, "%u%%", rate);
-      if (device->static_info.encode_decode_shared)
-        draw_percentage_meter(decode_win, "ENC/DEC", rate, buff);
-      else
-        draw_percentage_meter(decode_win, "DEC", rate, buff);
-    }
     if (GPUINFO_DYNAMIC_FIELD_VALID(&device->dynamic_info, gpu_util_rate)) {
       if (GPUINFO_DYNAMIC_FIELD_VALID(&device->dynamic_info, effective_load_rate)) {
         // The effective load stays visible in the value badge; the bar itself
